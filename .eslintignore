@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+out/
+**/generated/**
+**/migrations/**
+**/__snapshots__/**
+

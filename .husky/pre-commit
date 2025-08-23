@@ -1,7 +1,5 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-# Temporarily relax lint-staged failures for this commit (CI will still run full lint)
-if ! npx lint-staged; then
-  echo "lint-staged reported issues; proceeding due to explicit non-blocking commit for ops/db verifiers"
-fi
+# Run lint-staged and fail on errors (warnings allowed by config)
+npx lint-staged
