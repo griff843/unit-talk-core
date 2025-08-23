@@ -27,6 +27,10 @@
     "accept:migration": "npm run accept:migration --workspace=scripts/e2e",
     "accept:metrics": "npm run accept:metrics --workspace=scripts/e2e",
     "accept:security": "npm run accept:security --workspace=scripts/e2e",
+    "db:seed:canary": "psql \"$DATABASE_URL\" -f scripts/db/seed-canary.sql",
+    "e2e:shadow": "tsx scripts/e2e/src/shadow-run.ts",
+    "test:promoter:unit": "npm run test --workspace=packages/logic",
+    "test:promoter:e2e": "npm run e2e:shadow",
     "postinstall": "husky install"
   },
   "devDependencies": {

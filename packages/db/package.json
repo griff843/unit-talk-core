@@ -19,7 +19,8 @@
     "@unit-talk/config": "*",
     "@unit-talk/observability": "*",
     "@supabase/supabase-js": "^2.38.4",
-    "postgres": "^3.4.3"
+    "postgres": "^3.4.3",
+    "pg": "^8.11.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

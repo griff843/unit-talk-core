@@ -117,3 +117,6 @@ export async function checkDatabaseHealth(): Promise<{
 
 // Re-export Supabase types for convenience
 export type { SupabaseClient } from '@supabase/supabase-js';
+
+// Promoter-specific PostgreSQL writer (single writer pattern)
+export * from './promoter.js';
