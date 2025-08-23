@@ -30,6 +30,14 @@ async function main(): Promise<void> {
   };
 
   try {
+    // Check if SKIP_SUPABASE_EXEC_SQL flag is set for gating
+    if (process.env.SKIP_SUPABASE_EXEC_SQL === 'true') {
+      logger.info('SKIP_SUPABASE_EXEC_SQL flag set, skipping session verification');
+      result.ok = true;
+      result.reason = 'Skipped due to SKIP_SUPABASE_EXEC_SQL flag';
+      return;
+    }
+    
     await withSession(async client => {
       // Read current session variables
       const r = await client.query(

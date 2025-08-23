@@ -74,6 +74,11 @@ async function main(): Promise<void> {
   };
 
   try {
+    // Check if SKIP_SUPABASE_EXEC_SQL flag is set for gating
+    if (process.env.SKIP_SUPABASE_EXEC_SQL === 'true') {
+      throw new Error('SKIP_SUPABASE_EXEC_SQL flag set, using direct PG fallback');
+    }
+    
     // Preferred: query via Supabase exec_sql
     try {
       const tablesRows = await queryViaSupabase(

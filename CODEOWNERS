@@ -1,0 +1,46 @@
+# Code Owners for Unit Talk Core
+# These owners will be the default owners for everything in
+# the repo. Unless a later match takes precedence,
+# @griff843 will be requested for review when someone
+# opens a pull request.
+
+# Default owners for everything in the repo
+* @griff843
+
+# Core infrastructure and DevOps
+/.github/ @griff843
+/docker-compose.yml @griff843
+/dev.sh @griff843
+/dev.ps1 @griff843
+/infrastructure/ @griff843
+/scripts/ops/ @griff843
+/scripts/e2e/ @griff843
+
+# Database and migrations
+/packages/db/ @griff843
+/migrations/ @griff843
+/scripts/db/ @griff843
+
+# Applications
+/apps/api/ @griff843
+/apps/worker/ @griff843
+/apps/command-center/ @griff843
+
+# Shared packages
+/packages/types/ @griff843
+/packages/logic/ @griff843
+/packages/config/ @griff843
+/packages/observability/ @griff843
+
+# Documentation
+/README.md @griff843
+/RUNBOOK.md @griff843
+/SECURITY.md @griff843
+/docs/ @griff843
+
+# Configuration files
+/.env.example @griff843
+/tsconfig.json @griff843
+/package.json @griff843
+/.eslintrc.json @griff843
+/.prettierrc @griff843

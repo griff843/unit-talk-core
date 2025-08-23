@@ -1,0 +1,140 @@
+services:
+  # Temporal PostgreSQL database
+  # Stores Temporal workflow state and history
+  temporal-postgres:
+    image: postgres:15-alpine
+    container_name: temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5432:5432"
+    volumes:
+      - temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - unit-talk-network
+
+  # Temporal server with auto-setup
+  # Provides workflow orchestration and task queue management
+  temporal:
+    image: temporalio/auto-setup:latest
+    container_name: temporal
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=false
+    ports:
+      - "7233:7233"  # Temporal gRPC API
+    volumes:
+      - ./infrastructure/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: ["CMD", "temporal", "workflow", "list", "--namespace", "default"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - unit-talk-network
+
+  # Temporal Web UI
+  # Provides visual workflow monitoring and debugging interface
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: temporal-ui
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8080:8080"  # Temporal UI
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - unit-talk-network
+
+  # Ops container for running repository scripts
+  # Used for acceptance testing and operational tasks
+  ops:
+    image: node:20-alpine
+    container_name: unit-talk-ops
+    working_dir: /app
+    volumes:
+      - .:/app
+      - node_modules_ops:/app/node_modules
+      - ~/.npm:/root/.npm
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=unit-talk
+      - SHADOW_MODE=${SHADOW_MODE:-true}
+      - PUBLISH_TO_DISCORD=${PUBLISH_TO_DISCORD:-false}
+      - ALLOW_PROMOTION_IN_SHADOW=${ALLOW_PROMOTION_IN_SHADOW:-false}
+    env_file:
+      - .env
+      - .env.local
+    command: tail -f /dev/null  # Keep container running
+    networks:
+      - unit-talk-network
+    depends_on:
+      - temporal
+      - temporal-postgres
+
+  # Optional: Worker service container
+  # Runs Temporal worker in containerized environment
+  worker:
+    image: node:20-alpine
+    container_name: unit-talk-worker
+    working_dir: /app
+    volumes:
+      - .:/app
+      - node_modules_worker:/app/node_modules
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=unit-talk
+      - SHADOW_MODE=${SHADOW_MODE:-true}
+      - PUBLISH_TO_DISCORD=${PUBLISH_TO_DISCORD:-false}
+      - ALLOW_PROMOTION_IN_SHADOW=${ALLOW_PROMOTION_IN_SHADOW:-false}
+    env_file:
+      - .env
+      - .env.local
+    command: sh -c "npm ci && npm run -w apps/worker worker:dev"
+    networks:
+      - unit-talk-network
+    depends_on:
+      temporal:
+        condition: service_healthy
+    profiles:
+      - worker  # Optional profile, not started by default
+
+networks:
+  unit-talk-network:
+    driver: bridge
+
+volumes:
+  temporal-postgres-data:
+    driver: local
+  node_modules_ops:
+    driver: local
+  node_modules_worker:
+    driver: local

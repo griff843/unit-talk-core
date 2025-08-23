@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/worker.ts",
+    "worker:dev": "tsx src/worker.ts",
     "start": "node dist/worker.js",
     "test": "echo \"No tests yet\" && exit 0",
     "type-check": "tsc --noEmit",
@@ -17,9 +18,13 @@
     "@unit-talk/db": "*",
     "@unit-talk/logic": "*",
     "@unit-talk/observability": "*",
-    "@temporalio/worker": "^1.8.6"
+    "@temporalio/worker": "^1.8.6",
+    "@temporalio/client": "^1.8.6",
+    "@temporalio/common": "^1.8.6"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0"
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "tsx": "^4.6.2"
   }
 }

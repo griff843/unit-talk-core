@@ -1,0 +1,48 @@
+# Temporal Dynamic Configuration for Local Development
+system.enableEventLevelDedupe:
+  - value: false
+    constraints: {}
+
+frontend.enableUpdateWorkflowExecution:
+  - value: true
+    constraints: {}
+
+frontend.enableUpdateWorkflowExecutionAsyncAccepted:
+  - value: true
+    constraints: {}
+
+frontend.enableExecuteMultiOperation:
+  - value: false
+    constraints: {}
+
+limit.maxIDLength:
+  - value: 1000
+    constraints: {}
+
+system.advancedVisibilityWritingMode:
+  - value: "off"
+    constraints: {}
+
+system.enableReadOnlyArchival:
+  - value: false
+    constraints: {}
+
+system.enableReadOnlyHistoryArchival:
+  - value: false
+    constraints: {}
+
+system.enableReadOnlyVisibilityArchival:
+  - value: false
+    constraints: {}
+
+system.archivalStatus:
+  - value: "disabled"
+    constraints: {}
+
+system.enableLogSecurityCheck:
+  - value: false
+    constraints: {}
+
+frontend.enableServerVersionCheck:
+  - value: false
+    constraints: {}

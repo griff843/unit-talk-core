@@ -20,7 +20,7 @@ on:
 
 # Set up environment variables for the entire workflow
 env:
-  NODE_VERSION: '18.x'
+  NODE_VERSION: '20.x'
   SHADOW_MODE: true
   PUBLISH_TO_DISCORD: false
   CI: true

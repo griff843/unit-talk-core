@@ -748,11 +748,57 @@ async function writeReport(report: OpsReport): Promise<void> {
 
     // Build dashboard aggregate (single JSON for quick status pages)
     try {
-      const dashboard = {
+      const dashboard: Record<string, unknown> = {
         timestamp: report.timestamp,
         ok: report.ok,
         components: report.components,
       };
+
+      // Attach non-breaking notes if present on the report
+      const notes = (report as unknown as { componentNotes?: Record<string, unknown> }).componentNotes;
+      if (notes) {
+        (dashboard as any).componentNotes = notes;
+      }
+
+      // Optionally merge verify-shape output into dashboard under schema.verify_shape
+      try {
+        const schemaPath = join(process.cwd(), 'out', 'db', 'verify-shape.json');
+        if (existsSync(schemaPath)) {
+          const j = JSON.parse(readFileSync(schemaPath, 'utf8')) as {
+            ok?: boolean;
+            tables?: Record<string, boolean>;
+            columns?: Record<string, boolean>;
+            indexes?: Record<string, boolean>;
+            timestamp?: string;
+            reason?: string;
+          };
+          const missing: string[] = [];
+          const indexesMissing: string[] = [];
+          if (!j.tables?.raw_props) missing.push('table:raw_props');
+          if (!j.tables?.unified_picks) missing.push('table:unified_picks');
+          if (!j.columns?.['raw_props.inserted_at']) missing.push('raw_props.inserted_at');
+          if (!j.columns?.['raw_props.processed_at']) missing.push('raw_props.processed_at');
+          if (!j.columns?.['unified_picks.promoted_at']) missing.push('unified_picks.promoted_at');
+          if (!j.columns?.['unified_picks.raw_id']) missing.push('unified_picks.raw_id');
+          if (!j.indexes?.['idx_raw_props_inserted_at']) indexesMissing.push('idx_raw_props_inserted_at');
+          if (!j.indexes?.['idx_raw_props_processed_at']) indexesMissing.push('idx_raw_props_processed_at');
+          if (!j.indexes?.['idx_unified_picks_promoted_at']) indexesMissing.push('idx_unified_picks_promoted_at');
+          if (!j.indexes?.['idx_unified_picks_raw_id']) indexesMissing.push('idx_unified_picks_raw_id');
+
+          const dcomp = ((dashboard as any).components ||= {});
+          const schemaComp = (dcomp.schema ||= {});
+          schemaComp.verify_shape = {
+            ok: !!j.ok,
+            missing,
+            indexesMissing,
+            timestamp: j.timestamp,
+            reason: j.reason,
+          };
+        }
+      } catch (e) {
+        void e;
+      }
+
       const dashPath = join(OUTPUT_DIR, 'dashboard.json');
       writeFileSync(dashPath, JSON.stringify(dashboard, null, 2));
     } catch (e) {

@@ -15,7 +15,7 @@ import '../shared/bootstrapEnv';
  * 3. Audit trail - Track write sources in payload metadata
  */
 
-import { getPg, getSupaService, closeConnections } from '../shared/db';
+import { getPgPool, getSupabaseAdmin, closeConnections } from '../shared/db';
 
 interface SingleWriterValidation {
   valid: boolean;
@@ -54,7 +54,7 @@ export async function validateSingleWriterConstraint(
 
     try {
       // Try pg.Pool first (preferred for complex queries)
-      const pool = getPg();
+      const pool = getPgPool();
       const query = `
         SELECT id, promoted_at, payload
         FROM public.unified_picks 
@@ -92,7 +92,7 @@ export async function validateSingleWriterConstraint(
     } catch (pgError) {
       try {
         // Fallback to Supabase service client
-        const supabase = getSupaService();
+        const supabase = getSupabaseAdmin();
         const { data, error } = await supabase
           .from('unified_picks')
           .select('id, promoted_at, payload')
@@ -243,4 +243,4 @@ if (require.main === module) {
   main();
 }
 
-export { validateSingleWriterConstraint, type SingleWriterValidation };
+export type { SingleWriterValidation };

@@ -2,24 +2,137 @@
 
 ## Overview
 
-This runbook provides comprehensive operational guidance for Unit Talk's Docker-first monorepo, covering staging environment setup, database operations, monitoring, and emergency procedures. Unit Talk implements a clean ingestion pipeline: **ingest → process → promote (single writer) → grade (shadow) → approve → publish (gated) → observe**.
+This runbook provides comprehensive operational guidance for Unit Talk's Fortune-100 standard DevOps infrastructure with Docker-first architecture, Temporal workflow orchestration, and production-grade monitoring. Unit Talk implements a clean ingestion pipeline: **ingest → process → promote (single writer) → grade (shadow) → approve → publish (gated) → observe**.
+
+## Boot Sequence & Phase Execution
+
+### Standard Boot Sequence
+
+1. **Start Temporal Stack**:
+   ```bash
+   .\dev.ps1 up        # Windows
+   ./dev.sh up         # Mac/Linux
+   ```
+
+2. **Health Checks (Automatic)**:
+   - Temporal PostgreSQL: `pg_isready -U temporal`  
+   - Temporal Server: gRPC connection on :7233
+   - Temporal UI: HTTP check on :8080
+   - Worker: Docker service detection with local fallback
+
+3. **Service Dependencies**:
+   - temporal-postgres → temporal → temporal-ui
+   - Worker starts after Temporal server health confirmed
+
+### Phase Execution Procedures
+
+**Phase A - Shadow Mode (No Promotions)**:
+```bash
+.\dev.ps1 phase:a    # Windows
+./dev.sh phase:a     # Mac/Linux
+```
+- `SHADOW_MODE=true`
+- `PUBLISH_TO_DISCORD=false` 
+- `ALLOW_PROMOTION_IN_SHADOW=false`
+- **Purpose**: Safe testing without side effects
+- **Artifacts**: `out/ops/dashboard.json` (Phase A snapshot)
+
+**Phase B - Live Mode (Muted Communications)**:
+```bash
+.\dev.ps1 phase:b    # Windows  
+./dev.sh phase:b     # Mac/Linux
+```
+- `SHADOW_MODE=false`
+- `PUBLISH_TO_DISCORD=false`
+- `ALLOW_PROMOTION_IN_SHADOW=false`
+- **Purpose**: Production data flow without external notifications
+- **Artifacts**: `out/ops/dashboard.json` (Phase B snapshot)
+
+**Phase C - Full Production Mode**:
+```bash  
+.\dev.ps1 phase:c    # Windows
+./dev.sh phase:c     # Mac/Linux
+```
+- `SHADOW_MODE=false`
+- `PUBLISH_TO_DISCORD=false` (muted for testing)
+- **Purpose**: Complete production operations validation
+- **Artifacts**: `out/ops/dashboard.json` (Phase C snapshot)
+
+### SQL Parity Query & Interpretation
+
+**5-Minute Window Query**:
+```sql
+SELECT 
+  count(*) FILTER (WHERE inserted_at >= now() - interval '5 minutes') as raw_new_5min,
+  count(*) FILTER (WHERE processed_at >= now() - interval '5 minutes') as processed_5min,  
+  count(*) FILTER (WHERE promoted_at >= now() - interval '5 minutes') as promoted_5min
+FROM public.raw_props 
+LEFT JOIN public.unified_picks ON raw_props.id = unified_picks.raw_id;
+```
+
+**Interpretation**:
+- `raw_new_5min ≥ processed_5min` ✅ Valid (ingestion leads processing)
+- `processed_5min ≥ promoted_5min` ✅ Valid (processing leads promotion)  
+- `promoted_5min ≤ MAX_ALLOWED_PROMOTES_5MIN` ✅ Valid (flood guard)
+- **Shadow Mode**: `promoted_5min = 0` ✅ Expected (no promotions)
+- **Live Mode**: `promoted_5min > 0` ✅ Expected (promotions flowing)
+
+### Emergency Mute & Rollback
+
+**Immediate Mute (Stop All External Communications)**:
+```bash
+# 1. Stop services
+.\dev.ps1 down       # Windows
+./dev.sh down        # Mac/Linux
+
+# 2. Set emergency flags in .env.local
+PUBLISH_TO_DISCORD=false
+SHADOW_MODE=true
+ALLOW_PROMOTION_IN_SHADOW=false
+
+# 3. Restart in safe mode  
+.\dev.ps1 phase:a    # Shadow mode validation
+```
+
+**Service Rollback Sequence**:
+1. **Level 1**: Mute communications (`PUBLISH_TO_DISCORD=false`)
+2. **Level 2**: Enable shadow mode (`SHADOW_MODE=true`)  
+3. **Level 3**: Stop promotions (`ALLOW_PROMOTION_IN_SHADOW=false`)
+4. **Level 4**: Stop all services (`docker compose down -v`)
 
 ## Quick Reference
 
 ### Essential Commands
 
 ```bash
+# Quick Start Development
+./dev.sh up                    # Start all services (Mac/Linux)
+.\dev.ps1 up                   # Start all services (Windows)
+
 # Environment & Dependencies
-npm install                    # Install all dependencies
+npm ci                         # Install exact dependencies
 npm run type-check            # TypeScript validation
 npm run lint                  # Code linting
 npm run build                 # Build all workspaces
+
+# Ops Acceptance Phases
+npm run ops:phase:a           # Shadow mode (no promotions)
+npm run ops:phase:b           # Live mode (muted)
+npm run ops:phase:c           # Full production
+
+# Docker Operations
+docker compose up -d          # Start all services
+docker compose logs -f        # View logs
+docker compose down -v        # Stop and cleanup
+docker compose run --rm ops npm run ops:phase:a  # Run Phase A in Docker
 
 # Database Operations
 npm run migrate:up            # Apply database migrations
 npm run migrate:down          # Rollback last migration
 npm run migrate:dry-run       # Preview migration status
 npm run db:seed:canary        # Seed test data
+npm run db:shape-patch        # Patch database shape
+npm run db:column-check       # Verify columns
 
 # Testing & Validation
 npm run test                  # Run all tests
@@ -32,18 +145,66 @@ npm run ops:all               # All health checks
 npm run ops:parity            # Data flow validation
 npm run ops:rls               # Security policy check
 npm run ops:temporal          # Workflow health
+npm run ops:accept            # Acceptance runner
+npm run ops:dashboard         # Generate dashboard
 npm run canary:shadow         # 30-minute shadow test
 npm run canary:monitor        # Continuous monitoring
+```
+
+## DevOps Validation Pipeline
+
+Unit Talk implements a comprehensive DevOps validation pipeline that generates audit reports and ensures Fortune-100 standard compliance:
+
+### Validation Scripts & Outputs
+
+```bash
+# Single-Writer Contract Validation
+npx tsx scripts/validation/single-writer-check.ts [window_minutes]
+# Output: Validates only Promoter writes to unified_picks table
+
+# DevOps Audit Report
+npm run ops:audit                 # Generates comprehensive DevOps baseline audit
+# Output: out/ops/audit-devops.json (Fortune-100 compliance rating)
+
+# Database Schema Validation
+npm run db:verify:shape          # Validates required columns and tables
+# Output: out/db/column-check.json, out/db/shape-patch.json
+
+# Session & RLS Validation
+npm run db:verify:session        # Tests RLS policies and session variables
+# Output: out/db/verify-session.json
+```
+
+### DevOps Compliance Rating
+
+The audit system provides an automated compliance rating (A+, A, A-, B+, B, C, D, F) based on:
+- **Infrastructure** (25%): Docker services, health checks, monitoring
+- **CI/CD Pipeline** (25%): GitHub Actions, Node version alignment, artifact uploads
+- **Security** (20%): Environment gating, RLS policies, secret management
+- **Documentation** (15%): README, runbooks, compliance docs
+- **Development Standards** (15%): Cross-platform scripts, dependency management
+
+### Supabase RPC Gating
+
+Production safety is ensured through the `SKIP_SUPABASE_EXEC_SQL` flag:
+
+```bash
+# Enable RPC gating (recommended for production)
+export SKIP_SUPABASE_EXEC_SQL=true
+
+# Validation scripts will safely fallback to alternative strategies
+# This prevents potentially destructive RPC calls in production environments
 ```
 
 ## Staging Environment Setup
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js 20 LTS (use `.nvmrc` with `nvm use`)
 - npm >= 9.0.0
-- PostgreSQL database access
-- Environment variables configured
+- Docker and Docker Compose
+- PostgreSQL database access (Supabase)
+- Environment variables configured (`.env` and `.env.local`)
 
 ### Initial Setup
 
