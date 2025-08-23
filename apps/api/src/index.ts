@@ -1,6 +1,6 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { getConfig } from '@unit-talk/config';
+import { config } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
 import { healthRouter } from './routes/health.js';
 import { metricsRouter } from './routes/metrics.js';
@@ -20,13 +20,13 @@ app.use('/api/health', healthRouter);
 const metricsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  keyGenerator: (req) => {
+  keyGenerator: req => {
     // Use leftmost IP from X-Forwarded-For header
     const forwarded = req.get('X-Forwarded-For');
     if (forwarded) {
       return forwarded.split(',')[0].trim();
     }
-    return req.ip;
+    return req.ip || 'unknown';
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -40,12 +40,18 @@ app.use('*', (req, res) => {
 });
 
 // Global error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  logger.error('Unhandled error', { error: err.message, stack: err.stack });
-  res.status(500).json({ error: 'Internal server error' });
-});
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    logger.error('Unhandled error', { error: err.message, stack: err.stack });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+);
 
-const config = getConfig();
 const port = config.api.port;
 
 app.listen(port, () => {

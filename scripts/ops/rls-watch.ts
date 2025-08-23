@@ -9,8 +9,7 @@ export async function runRlsWatch(): Promise<RlsResult> {
 }
 
 if (require.main === module) {
-  runRlsWatch().then((res) => {
+  runRlsWatch().then(res => {
     console.log(JSON.stringify(res));
   });
 }
-

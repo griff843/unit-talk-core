@@ -2,12 +2,8 @@
  * Pure feature calculation functions - no I/O operations
  */
 
-import {
-  GradingInput,
-  FactorResult,
-  GradingConfig,
-  GRADING_CONSTANTS,
-} from './types.js';
+import type { GradingInput, FactorResult, GradingConfig } from './types.js';
+import { GRADING_CONSTANTS } from './types.js';
 
 /**
  * Calculate basic player performance factor
@@ -23,20 +19,24 @@ export function calculatePlayerPerformanceFactor(
   // Basic heuristics for player performance
   if (input.sport === 'MLB') {
     // Simple batting average or ERA-based scoring
-    const playerStats = historicalData?.playerStats as Record<string, number> | undefined;
+    const playerStats = historicalData?.playerStats as
+      | Record<string, number>
+      | undefined;
     if (playerStats) {
       if (input.marketType?.includes('hits') && playerStats.battingAverage) {
-        score = Math.min(100, 30 + (playerStats.battingAverage * 70));
+        score = Math.min(100, 30 + playerStats.battingAverage * 70);
         confidence = 0.8;
       } else if (input.marketType?.includes('strikeouts') && playerStats.era) {
-        score = Math.min(100, 70 - (playerStats.era * 10));
+        score = Math.min(100, 70 - playerStats.era * 10);
         confidence = 0.7;
       }
     }
   } else if (input.sport === 'NBA') {
-    const playerStats = historicalData?.playerStats as Record<string, number> | undefined;
+    const playerStats = historicalData?.playerStats as
+      | Record<string, number>
+      | undefined;
     if (playerStats && playerStats.ppg) {
-      score = Math.min(100, 40 + (playerStats.ppg * 2));
+      score = Math.min(100, 40 + playerStats.ppg * 2);
       confidence = 0.75;
     }
   }
@@ -76,7 +76,7 @@ export function calculateTeamContextFactor(
     const differential = teamStrength - opponentStrength;
 
     // Convert differential to score (range -0.5 to 0.5 -> 25 to 75)
-    score = 50 + (differential * 50);
+    score = 50 + differential * 50;
     confidence = 0.7;
 
     // Home field advantage
@@ -110,7 +110,7 @@ export function calculateMarketAnalysisFactor(
   let score: number = GRADING_CONSTANTS.NEUTRAL_SCORE;
   let confidence = 0.6;
 
-  const odds = input.odds || marketData?.odds as number;
+  const odds = input.odds || (marketData?.odds as number);
   if (odds) {
     // Convert odds to implied probability
     let impliedProb: number;
@@ -123,12 +123,12 @@ export function calculateMarketAnalysisFactor(
     // Look for value in odds
     const fairProbability = 0.5; // Placeholder - would use actual probability model
     const edge = fairProbability - impliedProb;
-    
+
     // Convert edge to score
-    score = 50 + (edge * 200); // Scale edge to score range
-    
+    score = 50 + edge * 200; // Scale edge to score range
+
     // Higher confidence for more liquid markets
-    const volume = marketData?.volume as number || 0;
+    const volume = (marketData?.volume as number) || 0;
     confidence = Math.min(0.9, 0.3 + (volume / 10000) * 0.6);
   }
 
@@ -140,7 +140,11 @@ export function calculateMarketAnalysisFactor(
     contribution: 0,
     metadata: {
       odds,
-      impliedProbability: odds ? (odds > 0 ? 100 / (odds + 100) : Math.abs(odds) / (Math.abs(odds) + 100)) : null,
+      impliedProbability: odds
+        ? odds > 0
+          ? 100 / (odds + 100)
+          : Math.abs(odds) / (Math.abs(odds) + 100)
+        : null,
       marketVolume: marketData?.volume,
     },
   };
@@ -165,7 +169,11 @@ export function calculateHistoricalTrendsFactor(
     const matchupHistory = trends.vsOpponent || 0.5;
 
     // Weighted combination of trends
-    score = 30 + (recentPerformance * 25) + (seasonPerformance * 25) + (matchupHistory * 20);
+    score =
+      30 +
+      recentPerformance * 25 +
+      seasonPerformance * 25 +
+      matchupHistory * 20;
     confidence = 0.6;
 
     // Boost confidence for larger sample sizes
@@ -200,15 +208,17 @@ export function calculateSituationalFactor(
   let confidence = 0.4;
 
   if (situationalData) {
-    const weather = situationalData.weather as Record<string, unknown> | undefined;
+    const weather = situationalData.weather as
+      | Record<string, unknown>
+      | undefined;
     const injuries = situationalData.injuries as string[] | undefined;
     const rest = situationalData.daysRest as number | undefined;
-    
+
     // Weather impact (primarily for outdoor sports)
     if (weather && ['MLB', 'NFL'].includes(input.sport)) {
-      const windSpeed = weather.windSpeed as number || 0;
-      const temperature = weather.temperature as number || 70;
-      
+      const windSpeed = (weather.windSpeed as number) || 0;
+      const temperature = (weather.temperature as number) || 70;
+
       if (input.marketType?.includes('over') && windSpeed > 15) {
         score -= 10; // Wind reduces scoring
       }
@@ -258,30 +268,56 @@ export function calculateAllFactors(
 
   // Calculate each factor if enabled in config
   if (config.enabledFactors.includes('player_performance')) {
-    factors.push(calculatePlayerPerformanceFactor(input, contextData?.historical as Record<string, unknown>));
+    factors.push(
+      calculatePlayerPerformanceFactor(
+        input,
+        contextData?.historical as Record<string, unknown>
+      )
+    );
   }
 
   if (config.enabledFactors.includes('team_context')) {
-    factors.push(calculateTeamContextFactor(input, contextData?.team as Record<string, unknown>));
+    factors.push(
+      calculateTeamContextFactor(
+        input,
+        contextData?.team as Record<string, unknown>
+      )
+    );
   }
 
   if (config.enabledFactors.includes('market_analysis')) {
-    factors.push(calculateMarketAnalysisFactor(input, contextData?.market as Record<string, unknown>));
+    factors.push(
+      calculateMarketAnalysisFactor(
+        input,
+        contextData?.market as Record<string, unknown>
+      )
+    );
   }
 
   if (config.enabledFactors.includes('historical_trends')) {
-    factors.push(calculateHistoricalTrendsFactor(input, contextData?.trends as Record<string, unknown>));
+    factors.push(
+      calculateHistoricalTrendsFactor(
+        input,
+        contextData?.trends as Record<string, unknown>
+      )
+    );
   }
 
   if (config.enabledFactors.includes('situational_factors')) {
-    factors.push(calculateSituationalFactor(input, contextData?.situational as Record<string, unknown>));
+    factors.push(
+      calculateSituationalFactor(
+        input,
+        contextData?.situational as Record<string, unknown>
+      )
+    );
   }
 
   // Apply weights and calculate contributions
   return factors.map(factor => ({
     ...factor,
     weight: config.factorWeights[factor.factorId] || factor.weight,
-    contribution: factor.score * (config.factorWeights[factor.factorId] || factor.weight),
+    contribution:
+      factor.score * (config.factorWeights[factor.factorId] || factor.weight),
   }));
 }
 

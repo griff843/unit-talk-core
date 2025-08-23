@@ -3,17 +3,9 @@
  * No I/O operations, fully deterministic and testable
  */
 
-import {
-  GradingInput,
-  GradingResult,
-  GradingConfig,
-  GradingError,
-  GRADING_CONSTANTS,
-} from './types.js';
-import {
-  calculateAllFactors,
-  validateFactorResults,
-} from './features.js';
+import type { GradingInput, GradingResult, GradingConfig } from './types.js';
+import { GradingError, GRADING_CONSTANTS } from './types.js';
+import { calculateAllFactors, validateFactorResults } from './features.js';
 import {
   calculateCompositeScore,
   determineTier,
@@ -78,10 +70,13 @@ export function gradeProposition(
   const riskScore = calculateRiskScore(factorResults, confidenceLevel);
 
   // Create factor breakdown
-  const factorBreakdown = factorResults.reduce((breakdown, factor) => {
-    breakdown[factor.factorId] = factor.contribution;
-    return breakdown;
-  }, {} as Record<string, number>);
+  const factorBreakdown = factorResults.reduce(
+    (breakdown, factor) => {
+      breakdown[factor.factorId] = factor.contribution;
+      return breakdown;
+    },
+    {} as Record<string, number>
+  );
 
   // Build result
   const result: GradingResult = {
@@ -152,14 +147,18 @@ export function gradeBatchPropositions(
   }
 
   // Calculate summary statistics
-  const avgScore = results.length > 0
-    ? results.reduce((sum, r) => sum + r.totalScore, 0) / results.length
-    : 0;
+  const avgScore =
+    results.length > 0
+      ? results.reduce((sum, r) => sum + r.totalScore, 0) / results.length
+      : 0;
 
-  const tierDistribution = results.reduce((dist, result) => {
-    dist[result.tier] = (dist[result.tier] || 0) + 1;
-    return dist;
-  }, {} as Record<string, number>);
+  const tierDistribution = results.reduce(
+    (dist, result) => {
+      dist[result.tier] = (dist[result.tier] || 0) + 1;
+      return dist;
+    },
+    {} as Record<string, number>
+  );
 
   return {
     results,

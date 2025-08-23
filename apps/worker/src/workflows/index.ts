@@ -11,6 +11,9 @@ export async function pingWorkflow(): Promise<string> {
   return await ping();
 }
 
-export async function healthCheckWorkflow(): Promise<{ status: string; timestamp: string }> {
+export async function healthCheckWorkflow(): Promise<{
+  status: string;
+  timestamp: string;
+}> {
   return await healthCheck();
 }

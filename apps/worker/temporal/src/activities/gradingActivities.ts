@@ -4,13 +4,15 @@
  */
 
 import { Context } from '@temporalio/activity';
+import type {
+  GradingAdapterConfig,
+  GradingOperationResult,
+  GradingWithOutcome,
+} from '../adapters/gradingAdapter.js';
 import {
   executeGradingWorkflow as executeGradingWorkflowAdapter,
   gradeSinglePick as gradeSinglePickAdapter,
   testGradingConnection as testGradingConnectionAdapter,
-  GradingAdapterConfig,
-  GradingOperationResult,
-  GradingWithOutcome,
 } from '../adapters/gradingAdapter.js';
 import { logger } from '@unit-talk/observability';
 
@@ -23,10 +25,10 @@ export async function executeGradingWorkflow(
 ): Promise<GradingOperationResult> {
   const context = Context.current();
   const activityId = context.info.activityId;
-  
-  logger.info('Starting grading workflow activity', { 
-    activityId, 
-    config 
+
+  logger.info('Starting grading workflow activity', {
+    activityId,
+    config,
   });
 
   try {
@@ -52,7 +54,6 @@ export async function executeGradingWorkflow(
     });
 
     return result;
-
   } catch (error) {
     logger.error('Grading workflow activity failed', {
       activityId,
@@ -72,11 +73,11 @@ export async function gradeSinglePick(
 ): Promise<GradingWithOutcome | null> {
   const context = Context.current();
   const activityId = context.info.activityId;
-  
-  logger.info('Starting single pick grading activity', { 
-    activityId, 
+
+  logger.info('Starting single pick grading activity', {
+    activityId,
     pickId,
-    config 
+    config,
   });
 
   try {
@@ -99,7 +100,6 @@ export async function gradeSinglePick(
     });
 
     return result;
-
   } catch (error) {
     logger.error('Single pick grading activity failed', {
       activityId,
@@ -116,7 +116,7 @@ export async function gradeSinglePick(
 export async function testGradingConnection(): Promise<boolean> {
   const context = Context.current();
   const activityId = context.info.activityId;
-  
+
   logger.debug('Testing grading connection', { activityId });
 
   try {
@@ -130,7 +130,6 @@ export async function testGradingConnection(): Promise<boolean> {
     });
 
     return result;
-
   } catch (error) {
     logger.error('Grading connection test failed', {
       activityId,
@@ -155,12 +154,12 @@ export async function getGradingHealth(): Promise<{
 }> {
   const context = Context.current();
   const activityId = context.info.activityId;
-  
+
   try {
     context.heartbeat('Checking grading system health');
 
     const connectionOk = await testGradingConnectionAdapter();
-    
+
     // Could extend this to check additional health metrics:
     // - Recent grading success rate
     // - Average processing time
@@ -179,13 +178,12 @@ export async function getGradingHealth(): Promise<{
     });
 
     return health;
-
   } catch (error) {
     logger.error('Grading health check failed', {
       activityId,
       error: error instanceof Error ? error.message : String(error),
     });
-    
+
     return {
       healthy: false,
       connectionOk: false,

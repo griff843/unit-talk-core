@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { getConfig } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
 
@@ -14,7 +15,7 @@ export function createAdminClient(): SupabaseClient {
   }
 
   const config = getConfig();
-  
+
   adminClient = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY, {
     auth: {
       autoRefreshToken: false,
@@ -35,7 +36,7 @@ export function createAnonClient(): SupabaseClient {
   }
 
   const config = getConfig();
-  
+
   anonClient = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
 
   logger.debug('Supabase anon client created');
@@ -61,8 +62,8 @@ export async function setPromoterRole(client: SupabaseClient): Promise<void> {
 
     logger.debug('Promoter role set successfully');
   } catch (error) {
-    logger.error('Error setting promoter role', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Error setting promoter role', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -89,9 +90,13 @@ export async function checkDatabaseHealth(): Promise<{
 }> {
   try {
     const client = createAnonClient();
-    const { data, error } = await client.from('_health_check').select('1').limit(1);
-    
-    if (error && error.code !== 'PGRST116') { // PGRST116 = table not found, which is ok
+    const { data, error } = await client
+      .from('_health_check')
+      .select('1')
+      .limit(1);
+
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = table not found, which is ok
       throw error;
     }
 
@@ -101,15 +106,15 @@ export async function checkDatabaseHealth(): Promise<{
       details: { connectionTest: 'passed' },
     };
   } catch (error) {
-    logger.error('Database health check failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Database health check failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
-    
+
     return {
       healthy: false,
       timestamp: new Date().toISOString(),
-      details: { 
-        error: error instanceof Error ? error.message : String(error)
+      details: {
+        error: error instanceof Error ? error.message : String(error),
       },
     };
   }

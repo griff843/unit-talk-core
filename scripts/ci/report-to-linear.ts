@@ -57,14 +57,18 @@ async function linearRequest<T>(apiKey: string, body: any): Promise<T> {
           Authorization: apiKey,
         },
       },
-      (res) => {
+      res => {
         let data = '';
-        res.on('data', (chunk) => (data += chunk));
+        res.on('data', chunk => (data += chunk));
         res.on('end', () => {
           try {
             const json = JSON.parse(data);
             if (json.errors) {
-              return reject(new Error('Linear GraphQL error: ' + JSON.stringify(json.errors)));
+              return reject(
+                new Error(
+                  'Linear GraphQL error: ' + JSON.stringify(json.errors)
+                )
+              );
             }
             resolve(json);
           } catch (err) {
@@ -79,7 +83,11 @@ async function linearRequest<T>(apiKey: string, body: any): Promise<T> {
   });
 }
 
-async function findExistingIssue(apiKey: string, teamId: string, signature: string) {
+async function findExistingIssue(
+  apiKey: string,
+  teamId: string,
+  signature: string
+) {
   const query = {
     query: `query Issues($teamId: String!, $first: Int!) {
       issues(filter: { team: { id: { eq: $teamId } }, state: { type: { neq: completed } } }, first: $first) {
@@ -88,15 +96,35 @@ async function findExistingIssue(apiKey: string, teamId: string, signature: stri
     }`,
     variables: { teamId, first: 50 },
   };
-  type Resp = { data: { issues: { nodes: Array<{ id: string; identifier: string; title: string; url: string; description?: string; state: { name: string; type: string } }> } } };
+  type Resp = {
+    data: {
+      issues: {
+        nodes: Array<{
+          id: string;
+          identifier: string;
+          title: string;
+          url: string;
+          description?: string;
+          state: { name: string; type: string };
+        }>;
+      };
+    };
+  };
   const res = await linearRequest<Resp>(apiKey, query);
   const nodes = res?.data?.issues?.nodes ?? [];
-  return nodes.find((n) =>
-    (n.title && n.title.includes(signature)) || (n.description && n.description.includes(signature))
+  return nodes.find(
+    n =>
+      (n.title && n.title.includes(signature)) ||
+      (n.description && n.description.includes(signature))
   );
 }
 
-async function createIssue(apiKey: string, teamId: string, title: string, description: string) {
+async function createIssue(
+  apiKey: string,
+  teamId: string,
+  title: string,
+  description: string
+) {
   const mutation = {
     query: `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id url identifier title } } }`,
     variables: { input: { teamId, title, description } },
@@ -122,9 +150,14 @@ function main() {
   const failingJobs = (getenv('FAILING_JOBS') || '').trim();
   const breachEnv = getenv('BREACH_NAME');
 
-  let breachName = breachEnv || (failingJobs ? `CI failure in: ${failingJobs}` : 'Ops failure detected');
+  const breachName =
+    breachEnv ||
+    (failingJobs ? `CI failure in: ${failingJobs}` : 'Ops failure detected');
   const dateStr = new Date().toISOString().slice(0, 10);
-  const signature = crypto.createHash('sha1').update(`${breachName}|${dateStr}|${repo}`).digest('hex');
+  const signature = crypto
+    .createHash('sha1')
+    .update(`${breachName}|${dateStr}|${repo}`)
+    .digest('hex');
 
   const artifactUrl = `https://github.com/${repo}/actions/runs/${runId}/artifacts`;
   const runUrl = `https://github.com/${repo}/actions/runs/${runId}`;
@@ -153,7 +186,7 @@ function main() {
 
   // Mask in console
   console.log('Preparing Linear issue creation/update');
-  console.log(`Repo: ${repo}, Run: ${runId}, SHA: ${sha.slice(0,7)}...`);
+  console.log(`Repo: ${repo}, Run: ${runId}, SHA: ${sha.slice(0, 7)}...`);
   console.log(`Linear team: ${mask(teamId)}, API key: ${mask(apiKey)}`);
   console.log(`Signature: ${signature}`);
 
@@ -161,19 +194,34 @@ function main() {
     try {
       const existing = await findExistingIssue(apiKey, teamId, signature);
       if (existing) {
-        console.log(`Found existing Linear issue ${existing.identifier} (${existing.url}), adding comment`);
-        await addComment(apiKey, existing.id, `Another occurrence at ${nowIso}: ${runUrl}`);
+        console.log(
+          `Found existing Linear issue ${existing.identifier} (${existing.url}), adding comment`
+        );
+        await addComment(
+          apiKey,
+          existing.id,
+          `Another occurrence at ${nowIso}: ${runUrl}`
+        );
         return;
       }
-      console.log('No existing issue with same signature. Creating new issue...');
-      await createIssue(apiKey, teamId, `${title} <${signature}>`, description + `\n\nSignature: ${signature}`);
+      console.log(
+        'No existing issue with same signature. Creating new issue...'
+      );
+      await createIssue(
+        apiKey,
+        teamId,
+        `${title} <${signature}>`,
+        description + `\n\nSignature: ${signature}`
+      );
       console.log('Linear issue created successfully');
     } catch (err) {
-      console.error('Failed to create/update Linear issue:', (err as Error).message);
+      console.error(
+        'Failed to create/update Linear issue:',
+        (err as Error).message
+      );
       process.exitCode = 0; // Do not fail the job further
     }
   })();
 }
 
 main();
-

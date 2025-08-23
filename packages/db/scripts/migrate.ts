@@ -34,9 +34,9 @@ function loadMigrations(): Migration[] {
       return { id, name, filename, content };
     });
   } catch (error) {
-    logger.error('Failed to load migrations', { 
+    logger.error('Failed to load migrations', {
       error: error instanceof Error ? error.message : String(error),
-      migrationsDir: MIGRATIONS_DIR 
+      migrationsDir: MIGRATIONS_DIR,
     });
     throw error;
   }
@@ -61,30 +61,36 @@ async function getAppliedMigrations(sql: postgres.Sql): Promise<number[]> {
   return result.map(row => row.id as number);
 }
 
-async function applyMigration(sql: postgres.Sql, migration: Migration): Promise<void> {
+async function applyMigration(
+  sql: postgres.Sql,
+  migration: Migration
+): Promise<void> {
   logger.info(`Applying migration: ${migration.filename}`);
-  
+
   await sql.begin(async sql => {
     // Execute migration content
     await sql.unsafe(migration.content);
-    
+
     // Record migration as applied
     await sql`
       INSERT INTO _migrations (id, name, filename)
       VALUES (${migration.id}, ${migration.name}, ${migration.filename})
     `;
   });
-  
+
   logger.info(`Migration applied: ${migration.filename}`);
 }
 
-async function removeMigration(sql: postgres.Sql, migration: Migration): Promise<void> {
+async function removeMigration(
+  sql: postgres.Sql,
+  migration: Migration
+): Promise<void> {
   logger.info(`Removing migration: ${migration.filename}`);
-  
+
   await sql`
     DELETE FROM _migrations WHERE id = ${migration.id}
   `;
-  
+
   logger.info(`Migration removed from tracking: ${migration.filename}`);
 }
 
@@ -98,7 +104,7 @@ async function migrateUp(): Promise<void> {
     const applied = await getAppliedMigrations(sql);
 
     const pending = migrations.filter(m => !applied.includes(m.id));
-    
+
     if (pending.length === 0) {
       logger.info('No pending migrations');
       return;
@@ -153,11 +159,11 @@ async function dryRun(): Promise<void> {
     const applied = await getAppliedMigrations(sql);
 
     const pending = migrations.filter(m => !applied.includes(m.id));
-    
+
     logger.info('Migration status:');
     logger.info(`Applied: ${applied.length}`);
     logger.info(`Pending: ${pending.length}`);
-    
+
     if (pending.length > 0) {
       logger.info('Pending migrations:');
       pending.forEach(m => {
@@ -190,9 +196,9 @@ async function main() {
 
 if (require.main === module) {
   main().catch(error => {
-    logger.error('Migration failed', { 
+    logger.error('Migration failed', {
       error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     });
     process.exit(1);
   });

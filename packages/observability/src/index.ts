@@ -2,7 +2,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-tracing-base';
+import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 import { getConfig } from '@unit-talk/config';
 
 // Initialize OpenTelemetry SDK
@@ -10,7 +10,7 @@ let otelSdk: NodeSDK | null = null;
 
 export function initializeTracing(serviceName: string): void {
   const config = getConfig();
-  
+
   if (!config.OTEL_ENABLED) {
     console.log('OpenTelemetry disabled via config');
     return;
@@ -56,7 +56,7 @@ class Logger {
 
   constructor(serviceName: string = 'unit-talk', logLevel?: LogLevel) {
     this.serviceName = serviceName;
-    
+
     try {
       const config = getConfig();
       this.logLevel = logLevel || config.LOG_LEVEL;
@@ -76,7 +76,11 @@ class Logger {
     return levels[level] >= levels[this.logLevel];
   }
 
-  private formatMessage(level: LogLevel, message: string, context?: LogContext) {
+  private formatMessage(
+    level: LogLevel,
+    message: string,
+    context?: LogContext
+  ) {
     const timestamp = new Date().toISOString();
     const logEntry = {
       timestamp,
@@ -116,11 +120,18 @@ class Logger {
   child(additionalContext: LogContext): Logger {
     const childLogger = new Logger(this.serviceName, this.logLevel);
     const originalFormatMessage = childLogger.formatMessage.bind(childLogger);
-    
-    childLogger.formatMessage = (level: LogLevel, message: string, context?: LogContext) => {
-      return originalFormatMessage(level, message, { ...additionalContext, ...context });
+
+    childLogger.formatMessage = (
+      level: LogLevel,
+      message: string,
+      context?: LogContext
+    ) => {
+      return originalFormatMessage(level, message, {
+        ...additionalContext,
+        ...context,
+      });
     };
-    
+
     return childLogger;
   }
 }

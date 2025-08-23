@@ -1,6 +1,6 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-export const BreachSeverity = z.enum(["low", "med", "high"]);
+export const BreachSeverity = z.enum(['low', 'med', 'high']);
 
 export const Breach = z.object({
   name: z.string(),
@@ -30,6 +30,23 @@ export const Components = z.object({
       failures: z.number().int().nonnegative().optional(),
     })
     .optional(),
+  discord: z
+    .object({
+      ok: z.boolean(),
+      dryRun: z.boolean().optional(),
+    })
+    .optional(),
+  db: z
+    .object({
+      ok: z.boolean(),
+      rls_enabled: z.boolean().optional(),
+    })
+    .optional(),
+  supabase: z
+    .object({
+      ok: z.boolean(),
+    })
+    .optional(),
 });
 
 export const OpsReport = z.object({
@@ -43,4 +60,3 @@ export const OpsReport = z.object({
 
 export type OpsReport = z.infer<typeof OpsReport>;
 export type Components = z.infer<typeof Components>;
-

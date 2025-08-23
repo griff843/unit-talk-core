@@ -3,12 +3,14 @@
  * Handles ingestion and processing activities (no unified_picks writes)
  */
 
+import type {
+  FeedAdapterConfig,
+  FeedOperationResult,
+} from '../adapters/feedAdapter.js';
 import {
   executeFeedWorkflow,
   testFeedAdapter,
   getRawPropsStatistics,
-  FeedAdapterConfig,
-  FeedOperationResult,
 } from '../adapters/feedAdapter.js';
 import { logger } from '@unit-talk/observability';
 
@@ -20,19 +22,18 @@ export async function executeFeedActivity(
   config: FeedAdapterConfig
 ): Promise<FeedOperationResult> {
   logger.info('Starting feed activity', { config });
-  
+
   try {
     const result = await executeFeedWorkflow(config);
-    
+
     logger.info('Feed activity completed', {
       success: result.success,
       ingested: result.ingested,
       processed: result.processed,
       rejected: result.rejected,
     });
-    
+
     return result;
-    
   } catch (error) {
     logger.error('Feed activity failed', {
       error: error instanceof Error ? error.message : String(error),
@@ -45,9 +46,7 @@ export async function executeFeedActivity(
  * Get feed statistics activity
  * Monitoring activity for pipeline health
  */
-export async function getFeedStatisticsActivity(
-  windowMinutes = 5
-): Promise<{
+export async function getFeedStatisticsActivity(windowMinutes = 5): Promise<{
   raw_new: number;
   processed: number;
   unprocessed: number;
@@ -56,13 +55,12 @@ export async function getFeedStatisticsActivity(
 }> {
   try {
     logger.debug('Getting feed statistics', { windowMinutes });
-    
+
     const stats = await getRawPropsStatistics(windowMinutes);
-    
+
     logger.debug('Feed statistics retrieved', stats);
-    
+
     return stats;
-    
   } catch (error) {
     logger.error('Failed to get feed statistics', {
       error: error instanceof Error ? error.message : String(error),
@@ -81,15 +79,15 @@ export async function feedHealthCheckActivity(): Promise<{
 }> {
   try {
     logger.debug('Starting feed health check');
-    
+
     // Test 1: Adapter connection
     const connectionTest = await testFeedAdapter();
-    
+
     // Test 2: Recent statistics
     const recentStats = await getRawPropsStatistics(60); // 1 hour
-    
+
     const healthy = connectionTest;
-    
+
     const result = {
       healthy,
       timestamp: new Date().toISOString(),
@@ -99,19 +97,18 @@ export async function feedHealthCheckActivity(): Promise<{
         adapter: 'operational',
       },
     };
-    
+
     logger.info('Feed health check completed', {
       healthy: result.healthy,
       details: result.details,
     });
-    
+
     return result;
-    
   } catch (error) {
     logger.error('Feed health check failed', {
       error: error instanceof Error ? error.message : String(error),
     });
-    
+
     return {
       healthy: false,
       timestamp: new Date().toISOString(),

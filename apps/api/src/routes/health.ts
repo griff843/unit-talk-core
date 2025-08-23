@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
   };
 
   logger.debug('Health check requested', { health });
-  
+
   res.status(200).json(health);
 });
 

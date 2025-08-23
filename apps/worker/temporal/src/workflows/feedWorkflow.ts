@@ -7,7 +7,11 @@ import { proxyActivities } from '@temporalio/workflow';
 import type * as activities from '../activities/feedActivities.js';
 
 // Configure activity timeouts and retry policies
-const { executeFeedActivity, getFeedStatisticsActivity, feedHealthCheckActivity } = proxyActivities<typeof activities>({
+const {
+  executeFeedActivity,
+  getFeedStatisticsActivity,
+  feedHealthCheckActivity,
+} = proxyActivities<typeof activities>({
   startToCloseTimeout: '3 minutes', // Max time for feed operation
   retry: {
     initialInterval: '1s',
@@ -55,7 +59,7 @@ export async function feedWorkflow(
   params: FeedWorkflowParams = {}
 ): Promise<FeedWorkflowResult> {
   const startTime = Date.now();
-  
+
   try {
     // Execute feed ingestion and processing activity
     const result = await executeFeedActivity({
@@ -65,9 +69,9 @@ export async function feedWorkflow(
       maxItemsPerRun: params.maxItemsPerRun,
       dryRun: params.dryRun,
     });
-    
+
     const duration = Date.now() - startTime;
-    
+
     return {
       ...result,
       metadata: {
@@ -75,11 +79,10 @@ export async function feedWorkflow(
         processingDuration: duration,
       },
     };
-    
   } catch (error) {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     return {
       success: false,
       ingested: 0,
@@ -101,9 +104,7 @@ export async function feedWorkflow(
  * Feed statistics workflow
  * Gets current pipeline statistics
  */
-export async function feedStatisticsWorkflow(
-  windowMinutes = 5
-): Promise<{
+export async function feedStatisticsWorkflow(windowMinutes = 5): Promise<{
   success: boolean;
   statistics?: {
     raw_new: number;
@@ -116,12 +117,11 @@ export async function feedStatisticsWorkflow(
 }> {
   try {
     const stats = await getFeedStatisticsActivity(windowMinutes);
-    
+
     return {
       success: true,
       statistics: stats,
     };
-    
   } catch (error) {
     return {
       success: false,

@@ -3,11 +3,13 @@
  * These activities handle the actual I/O operations
  */
 
-import { 
-  executePromoterWorkflow, 
-  testPromoterConnection,
+import type {
   PromoterConfig,
-  PromoterOperationResult 
+  PromoterOperationResult,
+} from '../adapters/promoterAdapter.js';
+import {
+  executePromoterWorkflow,
+  testPromoterConnection,
 } from '../adapters/promoterAdapter.js';
 import { checkPromoterHealth } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
@@ -20,22 +22,21 @@ export async function executePromotionActivity(
   config: PromoterConfig
 ): Promise<PromoterOperationResult> {
   logger.info('Starting promotion activity', { config });
-  
+
   try {
     const result = await executePromoterWorkflow(config);
-    
-    logger.info('Promotion activity completed', { 
+
+    logger.info('Promotion activity completed', {
       success: result.success,
       promoted: result.promoted,
       rejected: result.rejected,
-      floodGuardTriggered: result.floodGuardTriggered
+      floodGuardTriggered: result.floodGuardTriggered,
     });
-    
+
     return result;
-    
   } catch (error) {
-    logger.error('Promotion activity failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Promotion activity failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -51,15 +52,15 @@ export async function healthCheckActivity(): Promise<{
 }> {
   try {
     logger.debug('Starting promoter health check');
-    
+
     // Test 1: Database connection with promoter role
     const dbHealth = await checkPromoterHealth();
-    
+
     // Test 2: Adapter connection test
     const connectionTest = await testPromoterConnection();
-    
+
     const healthy = dbHealth.healthy && connectionTest;
-    
+
     const result = {
       healthy,
       timestamp: new Date().toISOString(),
@@ -69,19 +70,18 @@ export async function healthCheckActivity(): Promise<{
         adapter: 'operational',
       },
     };
-    
-    logger.info('Promoter health check completed', { 
-      healthy: result.healthy, 
-      details: result.details 
+
+    logger.info('Promoter health check completed', {
+      healthy: result.healthy,
+      details: result.details,
     });
-    
+
     return result;
-    
   } catch (error) {
-    logger.error('Promoter health check failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Promoter health check failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
-    
+
     return {
       healthy: false,
       timestamp: new Date().toISOString(),

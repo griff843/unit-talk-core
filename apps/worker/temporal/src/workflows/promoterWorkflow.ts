@@ -7,7 +7,9 @@ import { proxyActivities } from '@temporalio/workflow';
 import type * as activities from '../activities/promoterActivities.js';
 
 // Configure activity timeouts and retry policies
-const { executePromotionActivity, healthCheckActivity } = proxyActivities<typeof activities>({
+const { executePromotionActivity, healthCheckActivity } = proxyActivities<
+  typeof activities
+>({
   startToCloseTimeout: '5 minutes', // Max time for promotion operation
   retry: {
     initialInterval: '1s',
@@ -54,13 +56,13 @@ export async function promoterWorkflow(
   params: PromoterWorkflowParams = {}
 ): Promise<PromoterWorkflowResult> {
   const startTime = Date.now();
-  
+
   try {
     // Execute promotion activity
     const result = await executePromotionActivity(params);
-    
+
     const duration = Date.now() - startTime;
-    
+
     return {
       ...result,
       metadata: {
@@ -68,11 +70,10 @@ export async function promoterWorkflow(
         duration,
       },
     };
-    
   } catch (error) {
     const duration = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     return {
       success: false,
       promoted: 0,

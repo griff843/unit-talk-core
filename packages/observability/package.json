@@ -9,15 +9,16 @@
     "build": "tsc",
     "test": "echo \"No tests yet\" && exit 0",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "dependencies": {
     "@unit-talk/config": "*",
-    "@opentelemetry/api": "^1.7.0",
-    "@opentelemetry/sdk-node": "^0.45.1",
-    "@opentelemetry/exporter-console": "^1.17.0",
-    "@opentelemetry/instrumentation-http": "^0.45.1",
-    "@opentelemetry/instrumentation-express": "^0.34.1"
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.52.0",
+    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@opentelemetry/instrumentation-http": "^0.52.0",
+    "@opentelemetry/instrumentation-express": "^0.41.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.47.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0"

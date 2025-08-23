@@ -1,10 +1,10 @@
-import {
+import type {
   PromotionCandidate,
   PromotionConfig,
   PromotionResult,
   RawPropsRow,
-  PROMOTION_CONSTANTS,
 } from './types.js';
+import { PROMOTION_CONSTANTS } from './types.js';
 import {
   calculateEligibilityFactors,
   calculatePromotionScore,
@@ -23,8 +23,10 @@ export function selectCandidatesForPromotion(
   config: PromotionConfig,
   currentTime = new Date()
 ): PromotionResult {
-  const windowStart = new Date(currentTime.getTime() - (config.windowSizeMinutes * 60 * 1000));
-  
+  const windowStart = new Date(
+    currentTime.getTime() - config.windowSizeMinutes * 60 * 1000
+  );
+
   // Step 1: Convert raw props to candidates with scoring
   const candidates: PromotionCandidate[] = rawProps
     .filter(raw => raw.processed_at != null) // Only process processed items
@@ -37,13 +39,16 @@ export function selectCandidatesForPromotion(
         config,
         currentTime
       );
-      
+
       // Calculate uniqueness score based on similar existing candidates
       const uniquenessScore = calculateUniquenessScore(raw, rawProps);
       const updatedFactors = { ...eligibilityFactors, uniquenessScore };
-      
-      const score = calculatePromotionScore(updatedFactors, config.scoringWeights);
-      
+
+      const score = calculatePromotionScore(
+        updatedFactors,
+        config.scoringWeights
+      );
+
       return {
         rawId: raw.id,
         insertedAt,
@@ -52,20 +57,20 @@ export function selectCandidatesForPromotion(
         eligibilityFactors: updatedFactors,
       };
     });
-  
+
   // Step 2: Filter by eligibility rules
   const { eligible, rejected } = filterEligibleCandidates(candidates, config);
-  
+
   // Step 3: Sort by score (descending)
   const sortedCandidates = [...eligible].sort((a, b) => b.score - a.score);
-  
+
   // Step 4: Apply flood guard protection
   const { allowed, blocked, floodGuardTriggered } = applyFloodGuard(
     sortedCandidates,
     existingPromotions.length,
     config
   );
-  
+
   // Add blocked candidates to rejected list
   const allRejected = [
     ...rejected,
@@ -74,7 +79,7 @@ export function selectCandidatesForPromotion(
       reason: 'Blocked by flood guard protection',
     })),
   ];
-  
+
   // Step 5: Build result
   const result: PromotionResult = {
     selectedCandidates: allowed,
@@ -87,10 +92,10 @@ export function selectCandidatesForPromotion(
       configUsed: config,
     },
   };
-  
+
   // Step 6: Validate result consistency
   validatePromotionResult(result);
-  
+
   return result;
 }
 
@@ -102,11 +107,18 @@ export function createDefaultPromotionConfig(
   overrides: Partial<PromotionConfig> = {}
 ): PromotionConfig {
   return {
-    maxPromotionsPerWindow: overrides.maxPromotionsPerWindow ?? PROMOTION_CONSTANTS.DEFAULT_MAX_PROMOTIONS_PER_5MIN,
+    maxPromotionsPerWindow:
+      overrides.maxPromotionsPerWindow ??
+      PROMOTION_CONSTANTS.DEFAULT_MAX_PROMOTIONS_PER_5MIN,
     windowSizeMinutes: overrides.windowSizeMinutes ?? 5,
-    minQualityThreshold: overrides.minQualityThreshold ?? PROMOTION_CONSTANTS.DEFAULT_MIN_QUALITY_THRESHOLD,
-    maxAgeHours: overrides.maxAgeHours ?? PROMOTION_CONSTANTS.DEFAULT_MAX_AGE_HOURS,
-    dedupeLookbackHours: overrides.dedupeLookbackHours ?? PROMOTION_CONSTANTS.DEFAULT_DEDUPE_LOOKBACK_HOURS,
+    minQualityThreshold:
+      overrides.minQualityThreshold ??
+      PROMOTION_CONSTANTS.DEFAULT_MIN_QUALITY_THRESHOLD,
+    maxAgeHours:
+      overrides.maxAgeHours ?? PROMOTION_CONSTANTS.DEFAULT_MAX_AGE_HOURS,
+    dedupeLookbackHours:
+      overrides.dedupeLookbackHours ??
+      PROMOTION_CONSTANTS.DEFAULT_DEDUPE_LOOKBACK_HOURS,
     scoringWeights: {
       ...PROMOTION_CONSTANTS.DEFAULT_SCORING_WEIGHTS,
       ...overrides.scoringWeights,
@@ -123,20 +135,22 @@ export function calculateUniquenessScore(
   allCandidates: RawPropsRow[]
 ): number {
   const candidateContent = extractContentSignature(candidate.data);
-  
+
   if (!candidateContent) {
     return 0.5; // Neutral score for content without clear signature
   }
-  
+
   // Count similar content in the dataset
   const similarCount = allCandidates
     .filter(other => other.id !== candidate.id)
     .map(other => extractContentSignature(other.data))
-    .filter(signature => signature && calculateSimilarity(candidateContent, signature) > 0.7)
-    .length;
-  
+    .filter(
+      signature =>
+        signature && calculateSimilarity(candidateContent, signature) > 0.7
+    ).length;
+
   // Higher uniqueness for less similar content
-  return Math.max(0.1, 1.0 - (similarCount * 0.2));
+  return Math.max(0.1, 1.0 - similarCount * 0.2);
 }
 
 /**
@@ -146,7 +160,7 @@ export function calculateUniquenessScore(
 function extractContentSignature(data: Record<string, unknown>): string | null {
   // Try multiple fields that might contain the main content
   const contentFields = ['content', 'title', 'summary', 'description', 'text'];
-  
+
   for (const field of contentFields) {
     const value = data[field];
     if (typeof value === 'string' && value.trim().length > 0) {
@@ -158,7 +172,7 @@ function extractContentSignature(data: Record<string, unknown>): string | null {
         .trim();
     }
   }
-  
+
   return null;
 }
 
@@ -168,17 +182,17 @@ function extractContentSignature(data: Record<string, unknown>): string | null {
  */
 function calculateSimilarity(content1: string, content2: string): number {
   if (content1 === content2) return 1.0;
-  
+
   // Simple word-based similarity using Jaccard index
   const words1 = new Set(content1.split(' ').filter(w => w.length > 2));
   const words2 = new Set(content2.split(' ').filter(w => w.length > 2));
-  
+
   if (words1.size === 0 && words2.size === 0) return 1.0;
   if (words1.size === 0 || words2.size === 0) return 0.0;
-  
+
   const intersection = new Set([...words1].filter(word => words2.has(word)));
   const union = new Set([...words1, ...words2]);
-  
+
   return intersection.size / union.size;
 }
 
@@ -191,16 +205,18 @@ export function getReadyCandidates(
   maxAgeHours: number,
   currentTime = new Date()
 ): RawPropsRow[] {
-  const cutoffTime = new Date(currentTime.getTime() - (maxAgeHours * 60 * 60 * 1000));
-  
+  const cutoffTime = new Date(
+    currentTime.getTime() - maxAgeHours * 60 * 60 * 1000
+  );
+
   return rawProps.filter(raw => {
     // Must be processed
     if (!raw.processed_at) return false;
-    
+
     // Must be within age limit
     const insertedAt = new Date(raw.inserted_at);
     if (insertedAt < cutoffTime) return false;
-    
+
     return true;
   });
 }
@@ -214,6 +230,6 @@ export function ensureIdempotency(
   existingPromotions: Array<{ raw_id: string; promoted_at: string }>
 ): PromotionCandidate[] {
   const promotedRawIds = new Set(existingPromotions.map(p => p.raw_id));
-  
+
   return candidates.filter(candidate => !promotedRawIds.has(candidate.rawId));
 }

@@ -29,14 +29,14 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
     try {
       const healthResponse = await fetch(`${baseUrl}/api/health`);
       const healthData = await healthResponse.json();
-      
+
       if (healthResponse.ok && healthData.status === 'ok') {
         results.push({
           test: 'Health endpoint',
           status: 'PASS',
           message: 'Health endpoint responds correctly',
           timestamp,
-          details: { status: healthResponse.status, data: healthData }
+          details: { status: healthResponse.status, data: healthData },
         });
       } else {
         results.push({
@@ -44,7 +44,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'FAIL',
           message: `Health endpoint failed: ${healthResponse.status}`,
           timestamp,
-          details: { status: healthResponse.status, data: healthData }
+          details: { status: healthResponse.status, data: healthData },
         });
       }
     } catch (error) {
@@ -53,7 +53,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
         status: 'FAIL',
         message: `Health endpoint connection failed: ${error instanceof Error ? error.message : String(error)}`,
         timestamp,
-        details: { error: String(error) }
+        details: { error: String(error) },
       });
     }
 
@@ -66,21 +66,21 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
         metrics: {
           cpu: 0.5,
           memory: 0.3,
-          requests: 100
-        }
+          requests: 100,
+        },
       };
 
       const metricsResponse = await fetch(`${baseUrl}/api/metrics/ingestion`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Forwarded-For': '192.168.1.1, 10.0.0.1' // Test leftmost IP extraction
+          'X-Forwarded-For': '192.168.1.1, 10.0.0.1', // Test leftmost IP extraction
         },
-        body: JSON.stringify(metricsPayload)
+        body: JSON.stringify(metricsPayload),
       });
 
       const metricsData = await metricsResponse.json();
-      
+
       // Should always return 200, check success field
       if (metricsResponse.status === 200 && metricsData.success) {
         results.push({
@@ -88,11 +88,11 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'PASS',
           message: 'Metrics ingestion accepts valid data',
           timestamp,
-          details: { 
-            status: metricsResponse.status, 
+          details: {
+            status: metricsResponse.status,
             data: metricsData,
-            duration: metricsData.duration 
-          }
+            duration: metricsData.duration,
+          },
         });
       } else {
         results.push({
@@ -100,7 +100,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'FAIL',
           message: `Metrics ingestion failed: ${metricsData.message || 'Unknown error'}`,
           timestamp,
-          details: { status: metricsResponse.status, data: metricsData }
+          details: { status: metricsResponse.status, data: metricsData },
         });
       }
     } catch (error) {
@@ -109,7 +109,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
         status: 'FAIL',
         message: `Metrics ingestion connection failed: ${error instanceof Error ? error.message : String(error)}`,
         timestamp,
-        details: { error: String(error) }
+        details: { error: String(error) },
       });
     }
 
@@ -121,13 +121,13 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
       const invalidResponse = await fetch(`${baseUrl}/api/metrics/ingestion`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(invalidPayload)
+        body: JSON.stringify(invalidPayload),
       });
 
       const invalidData = await invalidResponse.json();
-      
+
       // Should return 200 with success: false for invalid data
       if (invalidResponse.status === 200 && invalidData.success === false) {
         results.push({
@@ -135,10 +135,10 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'PASS',
           message: 'Metrics ingestion correctly handles invalid data',
           timestamp,
-          details: { 
-            status: invalidResponse.status, 
-            data: invalidData 
-          }
+          details: {
+            status: invalidResponse.status,
+            data: invalidData,
+          },
         });
       } else {
         results.push({
@@ -146,7 +146,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'FAIL',
           message: `Metrics ingestion should return success:false for invalid data`,
           timestamp,
-          details: { status: invalidResponse.status, data: invalidData }
+          details: { status: invalidResponse.status, data: invalidData },
         });
       }
     } catch (error) {
@@ -155,7 +155,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
         status: 'FAIL',
         message: `Invalid data test failed: ${error instanceof Error ? error.message : String(error)}`,
         timestamp,
-        details: { error: String(error) }
+        details: { error: String(error) },
       });
     }
 
@@ -168,7 +168,7 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           fetch(`${baseUrl}/api/metrics/ingestion`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ test: `rate-limit-${i}` })
+            body: JSON.stringify({ test: `rate-limit-${i}` }),
           })
         );
       }
@@ -182,10 +182,10 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'PASS',
           message: 'Rate limiting allows reasonable request volume',
           timestamp,
-          details: { 
+          details: {
             requestCount: rateLimitResponses.length,
-            statuses: rateLimitResponses.map(r => r.status)
-          }
+            statuses: rateLimitResponses.map(r => r.status),
+          },
         });
       } else {
         results.push({
@@ -193,10 +193,10 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
           status: 'FAIL',
           message: 'Rate limiting blocked reasonable request volume',
           timestamp,
-          details: { 
+          details: {
             requestCount: rateLimitResponses.length,
-            statuses: rateLimitResponses.map(r => r.status)
-          }
+            statuses: rateLimitResponses.map(r => r.status),
+          },
         });
       }
     } catch (error) {
@@ -205,17 +205,16 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
         status: 'FAIL',
         message: `Rate limit test failed: ${error instanceof Error ? error.message : String(error)}`,
         timestamp,
-        details: { error: String(error) }
+        details: { error: String(error) },
       });
     }
-
   } catch (error) {
     results.push({
       test: 'Metrics endpoint test suite',
       status: 'FAIL',
       message: `Metrics tests failed: ${error instanceof Error ? error.message : String(error)}`,
       timestamp,
-      details: { error: error instanceof Error ? error.stack : String(error) }
+      details: { error: error instanceof Error ? error.stack : String(error) },
     });
   }
 
@@ -225,24 +224,24 @@ async function testMetricsEndpoint(): Promise<TestResult[]> {
 async function main() {
   try {
     mkdirSync(OUTPUT_DIR, { recursive: true });
-    
+
     const results = await testMetricsEndpoint();
     const outputFile = join(OUTPUT_DIR, 'metrics-test.json');
-    
+
     writeFileSync(outputFile, JSON.stringify(results, null, 2));
-    
+
     const passCount = results.filter(r => r.status === 'PASS').length;
     const failCount = results.filter(r => r.status === 'FAIL').length;
-    
+
     console.log(`Metrics tests: ${passCount} PASS, ${failCount} FAIL`);
     console.log(`Results written to: ${outputFile}`);
-    
+
     if (failCount > 0) {
       process.exit(1);
     }
   } catch (error) {
-    logger.error('Metrics test failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Metrics test failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     process.exit(1);
   }

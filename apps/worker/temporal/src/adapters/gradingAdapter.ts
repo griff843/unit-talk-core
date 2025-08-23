@@ -4,21 +4,24 @@
  */
 
 import { PoolClient } from 'pg';
-import {
+import type {
   GradingInput,
   GradingResult,
   GradingConfig,
-  gradeProposition,
-  gradeBatchPropositions,
-  createDefaultGradingConfig,
   MarketOutcome,
-  gradeMarketOutcome,
 } from '@unit-talk/logic';
 import {
-  createAnonClient,
-  RawPropsRow,
-  UnifiedPickRow,
-} from '@unit-talk/db';
+  gradeProposition,
+  gradeBatchPropositions,
+  GRADING_CONSTANTS,
+} from '@unit-talk/logic';
+import {
+  FactorCalculatorRegistry,
+  type FactorCalculationContext,
+  StatisticalUtils,
+} from '@unit-talk/logic';
+import type { UnifiedPickRow } from '@unit-talk/db';
+import { createAnonClient, RawPropsRow } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
 
 /**
@@ -69,24 +72,19 @@ export async function executeGradingWorkflow(
   config: GradingAdapterConfig = {}
 ): Promise<GradingOperationResult> {
   const startTime = Date.now();
-  
+
   try {
-    logger.info('Starting grading workflow', { 
-      config, 
-      timestamp: new Date().toISOString() 
+    logger.info('Starting grading workflow', {
+      config,
+      timestamp: new Date().toISOString(),
     });
-    
+
     // Step 1: Create grading configuration
-    const gradingConfig = createDefaultGradingConfig({
-      shadowMode: config.shadowMode,
-      qualityThreshold: config.qualityThreshold,
-      enabledFactors: config.enabledFactors,
-      factorWeights: config.factorWeights,
-    });
-    
+    const gradingConfig = createGradingConfig(config);
+
     // Step 2: Get candidates for grading (recently promoted picks)
     const candidates = await getGradingCandidates(config);
-    
+
     if (candidates.length === 0) {
       logger.info('No grading candidates found');
       return {
@@ -103,26 +101,25 @@ export async function executeGradingWorkflow(
         },
       };
     }
-    
+
     // Step 3: Execute grading with pure business logic
     const result = await executeGradingLogic(candidates, gradingConfig, config);
-    
-    logger.info('Grading workflow completed', { 
+
+    logger.info('Grading workflow completed', {
       graded: result.graded,
       failed: result.failed,
       avgScore: result.metadata.avgScore,
-      duration: Date.now() - startTime
+      duration: Date.now() - startTime,
     });
-    
+
     return result;
-    
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Grading workflow failed', { 
-      error: errorMessage, 
-      duration: Date.now() - startTime
+    logger.error('Grading workflow failed', {
+      error: errorMessage,
+      duration: Date.now() - startTime,
     });
-    
+
     return {
       success: false,
       graded: 0,
@@ -134,7 +131,7 @@ export async function executeGradingWorkflow(
         avgScore: 0,
         tierDistribution: {},
         processingTime: Date.now() - startTime,
-        configUsed: createDefaultGradingConfig(config),
+        configUsed: createGradingConfig(config),
       },
     };
   }
@@ -155,44 +152,53 @@ export async function gradeSinglePick(
       logger.warn('Pick not found for grading', { pickId });
       return null;
     }
-    
+
     // Convert to grading input
     const gradingInput = convertPickToGradingInput(pick);
-    
+
     // Gather context data
     const contextData = await gatherContextData(gradingInput);
-    
+
     // Create grading config
-    const gradingConfig = createDefaultGradingConfig(config);
-    
+    const gradingConfig = createGradingConfig(config);
+
     // Execute pure grading logic
-    const gradingResult = gradeProposition(gradingInput, gradingConfig, contextData);
-    
+    const gradingResult = gradeProposition(
+      gradingInput,
+      gradingConfig,
+      contextData
+    );
+
     // Optionally determine market outcome if result data available
     const outcomeData = await getOutcomeData(pickId);
     let marketOutcome: 'win' | 'loss' | 'push' | 'void' | 'pending' | undefined;
     let settledAt: Date | undefined;
-    
+
     if (outcomeData) {
-      const outcome: MarketOutcome = { 
+      const outcome: MarketOutcome = {
         result: outcomeData.result as any,
-        settledAt: outcomeData.settled_at ? new Date(outcomeData.settled_at) : undefined
+        settledAt: outcomeData.settled_at
+          ? new Date(outcomeData.settled_at)
+          : undefined,
       };
-      
-      marketOutcome = gradeMarketOutcome(gradingInput, outcome, outcomeData.result_data);
+
+      marketOutcome = gradeMarketOutcome(
+        gradingInput,
+        outcome,
+        outcomeData.result_data
+      );
       settledAt = outcome.settledAt;
     }
-    
+
     return {
       gradingResult,
       marketOutcome,
       settledAt,
     };
-    
   } catch (error) {
-    logger.error('Single pick grading failed', { 
-      pickId, 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Single pick grading failed', {
+      pickId,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -206,16 +212,16 @@ async function getGradingCandidates(
 ): Promise<UnifiedPickRow[]> {
   const anonClient = createAnonClient();
   const maxAgeMinutes = config.maxAge || 1440; // Default 24 hours
-  const cutoffTime = new Date(Date.now() - (maxAgeMinutes * 60 * 1000));
+  const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
   const batchSize = config.batchSize || 100;
-  
+
   try {
-    logger.debug('Fetching grading candidates', { 
+    logger.debug('Fetching grading candidates', {
       cutoffTime: cutoffTime.toISOString(),
       maxAge: maxAgeMinutes,
-      batchSize 
+      batchSize,
     });
-    
+
     // Query for recently promoted picks that haven't been graded
     const { data, error } = await anonClient
       .from('unified_picks')
@@ -225,22 +231,21 @@ async function getGradingCandidates(
       .is('graded_at', null) // Not yet graded
       .order('promoted_at', { ascending: false })
       .limit(batchSize);
-    
+
     if (error) {
       throw new Error(`Failed to fetch grading candidates: ${error.message}`);
     }
-    
+
     if (!data || data.length === 0) {
       logger.debug('No grading candidates found');
       return [];
     }
-    
+
     logger.info('Fetched grading candidates', { count: data.length });
     return data as UnifiedPickRow[];
-    
   } catch (error) {
-    logger.error('Failed to get grading candidates', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Failed to get grading candidates', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -255,36 +260,42 @@ async function executeGradingLogic(
   adapterConfig: GradingAdapterConfig
 ): Promise<GradingOperationResult> {
   const startTime = Date.now();
-  
+
   try {
     // Convert candidates to grading inputs
-    const gradingInputs: GradingInput[] = candidates.map(convertPickToGradingInput);
-    
+    const gradingInputs: GradingInput[] = candidates.map(
+      convertPickToGradingInput
+    );
+
     // Gather context data for all picks (could be optimized with bulk queries)
     const contextData: Record<string, Record<string, unknown>> = {};
-    
+
     for (const input of gradingInputs) {
       try {
         contextData[input.pickId] = await gatherContextData(input);
       } catch (error) {
-        logger.warn('Failed to gather context data for pick', { 
-          pickId: input.pickId, 
-          error: error instanceof Error ? error.message : String(error)
+        logger.warn('Failed to gather context data for pick', {
+          pickId: input.pickId,
+          error: error instanceof Error ? error.message : String(error),
         });
         // Continue without context data for this pick
       }
     }
-    
+
     // Execute pure grading logic in batch
-    const batchResult = gradeBatchPropositions(gradingInputs, gradingConfig, contextData);
-    
+    const batchResult = gradeBatchPropositions(
+      gradingInputs,
+      gradingConfig,
+      contextData
+    );
+
     // In shadow mode, we don't persist grades - just compute them
     if (gradingConfig.shadowMode) {
       logger.info('Shadow mode - grades computed but not persisted', {
         computed: batchResult.results.length,
         avgScore: batchResult.summary.avgScore,
       });
-      
+
       return {
         success: true,
         graded: batchResult.results.length,
@@ -300,7 +311,7 @@ async function executeGradingLogic(
         },
       };
     }
-    
+
     // TODO: In production mode, would persist grades to a grading table
     // For now, log the results
     batchResult.results.forEach(result => {
@@ -311,11 +322,11 @@ async function executeGradingLogic(
         confidence: result.confidenceLevel,
       });
     });
-    
+
     batchResult.errors.forEach(error => {
       logger.error('Pick grading error', error);
     });
-    
+
     return {
       success: true,
       graded: batchResult.results.length,
@@ -330,10 +341,9 @@ async function executeGradingLogic(
         configUsed: gradingConfig,
       },
     };
-    
   } catch (error) {
-    logger.error('Grading logic execution failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Grading logic execution failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -344,26 +354,26 @@ async function executeGradingLogic(
  */
 async function getPickData(pickId: string): Promise<UnifiedPickRow | null> {
   const anonClient = createAnonClient();
-  
+
   try {
     const { data, error } = await anonClient
       .from('unified_picks')
       .select('*')
       .eq('id', pickId)
       .single();
-    
+
     if (error) {
       if (error.code === 'PGRST116') {
         return null; // Not found
       }
       throw new Error(`Failed to fetch pick data: ${error.message}`);
     }
-    
+
     return data as UnifiedPickRow;
   } catch (error) {
-    logger.error('Failed to get pick data', { 
-      pickId, 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Failed to get pick data', {
+      pickId,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -383,7 +393,7 @@ async function getOutcomeData(pickId: string): Promise<any> {
  */
 function convertPickToGradingInput(pick: UnifiedPickRow): GradingInput {
   const payload = pick.data || {};
-  
+
   return {
     pickId: pick.id,
     tenantId: payload.tenant_id || 'default',
@@ -415,19 +425,19 @@ async function gatherContextData(
   // - Weather and situational factors
   // - Injury reports
   // - Recent performance trends
-  
+
   // For now, return minimal context to demonstrate the pattern
   return {
     historical: {
       playerStats: {
         // Would query stats API or database
         battingAverage: 0.275, // Example data
-        onBasePercentage: 0.340,
-      }
+        onBasePercentage: 0.34,
+      },
     },
     team: {
-      team: { winRate: 0.520 },
-      opponent: { winRate: 0.480 },
+      team: { winRate: 0.52 },
+      opponent: { winRate: 0.48 },
       isHome: input.data?.is_home || false,
     },
     market: {
@@ -443,27 +453,46 @@ async function gatherContextData(
 }
 
 /**
+ * Create grading configuration using new constants and factor system
+ */
+function createGradingConfig(config: GradingAdapterConfig): GradingConfig {
+  const availableFactors = FactorCalculatorRegistry.getAvailableFactors();
+
+  return {
+    version: GRADING_CONSTANTS.DEFAULT_VERSION,
+    enabledFactors: config.enabledFactors || availableFactors.slice(0, 20), // Use top 20 factors by default
+    factorWeights: {
+      ...GRADING_CONSTANTS.FACTOR_WEIGHTS,
+      ...config.factorWeights,
+    },
+    tierThresholds: GRADING_CONSTANTS.TIER_THRESHOLDS,
+    qualityThreshold:
+      config.qualityThreshold || GRADING_CONSTANTS.DEFAULT_QUALITY_THRESHOLD,
+    shadowMode: config.shadowMode || false,
+  };
+}
+
+/**
  * Utility function for health checks and testing
  */
 export async function testGradingConnection(): Promise<boolean> {
   try {
     const anonClient = createAnonClient();
-    
+
     // Test basic query
     const { error } = await anonClient
       .from('unified_picks')
       .select('count(*)' as any, { count: 'exact', head: true });
-    
+
     if (error) {
       throw new Error(`Database connection test failed: ${error.message}`);
     }
-    
+
     logger.debug('Grading connection test successful');
     return true;
-    
   } catch (error) {
-    logger.error('Grading connection test failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Grading connection test failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     return false;
   }

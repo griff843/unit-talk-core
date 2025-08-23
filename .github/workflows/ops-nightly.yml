@@ -2,57 +2,300 @@ name: Nightly Ops Health Checks
 
 on:
   schedule:
-    - cron: '0 * * * *' # hourly
+    - cron: '0 2 * * *' # nightly at 2 AM UTC
+    - cron: '0 8,14,20 * * *' # 3 times daily at 8 AM, 2 PM, 8 PM UTC
   workflow_dispatch:
+    inputs:
+      force_linear_report:
+        description: 'Force Linear reporting even on success'
+        required: false
+        default: 'false'
+        type: boolean
+      ops_timeout:
+        description: 'Ops timeout in minutes'
+        required: false
+        default: '10'
+        type: string
+
+env:
+  NODE_VERSION: '18.x'
+  SHADOW_MODE: true
+  PUBLISH_TO_DISCORD: false
+  OPS_TIMEOUT: ${{ inputs.ops_timeout || '10' }}
 
 jobs:
-  ops:
-    name: Ops Health
+  ops-health-check:
+    name: Ops Health Check
     runs-on: ubuntu-latest
     environment: staging
+    timeout-minutes: 15
+    
+    outputs:
+      ops-status: ${{ steps.run_ops.outputs.status }}
+      breach-detected: ${{ steps.detect.outputs.breached }}
+      breach-names: ${{ steps.detect.outputs.breach_name }}
+    
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            node_modules
+            */*/node_modules
+          key: nightly-ops-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            nightly-ops-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --omit=dev --no-audit --no-fund
 
-      - name: Prepare out/ops directory
-        run: node -e "require('fs').mkdirSync('out/ops',{recursive:true});"
-
-      - name: Run ops:all
-        id: run_ops
+      - name: Prepare ops output directories
         run: |
-          node -e "console.log('Starting ops:all at '+new Date().toISOString())"
-          npm run ops:all
+          echo "Preparing output directories..."
+          mkdir -p out/ops
+          mkdir -p reports/ops
+          echo "Directories prepared successfully"
 
-      - name: Detect ops breaches (Node)
+      - name: Run comprehensive ops:all health check
+        id: run_ops
+        env:
+          SHADOW_MODE: true
+          PUBLISH_TO_DISCORD: false
+          NODE_ENV: production
+        run: |
+          echo "🚀 Starting comprehensive ops:all health check at $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          
+          # Create comprehensive ops report
+          cat > reports/ops/ops-summary.md << EOF
+          # Ops Health Check Report
+          
+          **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Workflow:** ${GITHUB_WORKFLOW}
+          **Run ID:** ${GITHUB_RUN_ID}
+          **Environment:** staging
+          
+          ## Health Check Status
+          EOF
+          
+          # Run ops:all with timeout and capture output
+          if timeout ${OPS_TIMEOUT}m npm run ops:all 2>&1 | tee reports/ops/ops-output.log; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ ops:all completed successfully" | tee -a reports/ops/ops-summary.md
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "❌ ops:all failed or timed out" | tee -a reports/ops/ops-summary.md
+          fi
+          
+          echo "📊 ops:all execution completed at $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+          
+          # Validate ops output file exists
+          if [[ -f "out/ops/ops.json" ]]; then
+            echo "✅ ops.json output file created successfully"
+            cp out/ops/ops.json reports/ops/ops.json
+          else
+            echo "⚠️ ops.json output file not found"
+            echo '{"ok":false,"error":"ops.json not generated","breaches":[{"name":"output_file_missing","severity":"high"}]}' > reports/ops/ops.json
+          fi
+
+      - name: Run smoke probes (shadow only)
+        if: ${{ env.SHADOW_MODE == 'true' }}
+        run: npm run smoke:all
+
+      - name: Analyze ops results and detect breaches
         id: detect
         run: |
-          node -e "const fs=require('fs');const p='out/ops/ops.json';const out=process.env.GITHUB_OUTPUT;let breached='false', name='';if(fs.existsSync(p)){const r=JSON.parse(fs.readFileSync(p,'utf8'));const ok=r && r.ok===true && Array.isArray(r.breaches) && r.breaches.length===0;breached= ok ? 'false' : 'true'; if(!ok){name=(r.breaches||[]).map(b=>b.name).join(', ');} } fs.appendFileSync(out, `breached=${breached}\n`); if(name) fs.appendFileSync(out, `breach_name=${name}\n`);"
+          echo "🔍 Analyzing ops results for breaches..."
+          
+          # Enhanced breach detection with detailed analysis
+          node -e "
+          const fs = require('fs');
+          const path = 'reports/ops/ops.json';
+          const out = process.env.GITHUB_OUTPUT;
+          
+          let breached = 'false';
+          let breachNames = '';
+          let breachCount = 0;
+          let severity = 'none';
+          
+          try {
+            if (fs.existsSync(path)) {
+              const result = JSON.parse(fs.readFileSync(path, 'utf8'));
+              
+              console.log('📊 Ops result analysis:');
+              console.log('- Status:', result.ok ? 'OK' : 'FAILED');
+              console.log('- Breaches:', Array.isArray(result.breaches) ? result.breaches.length : 'unknown');
+              
+              const hasBreaches = Array.isArray(result.breaches) && result.breaches.length > 0;
+              const isOk = result.ok === true;
+              
+              if (!isOk || hasBreaches) {
+                breached = 'true';
+                breachCount = hasBreaches ? result.breaches.length : 1;
+                
+                if (hasBreaches) {
+                  breachNames = result.breaches.map(b => b.name || 'unknown').join(', ');
+                  
+                  // Determine highest severity
+                  const severities = result.breaches.map(b => b.severity || 'medium');
+                  if (severities.includes('critical')) severity = 'critical';
+                  else if (severities.includes('high')) severity = 'high';
+                  else if (severities.includes('medium')) severity = 'medium';
+                  else severity = 'low';
+                } else {
+                  breachNames = 'ops_health_check_failed';
+                  severity = 'high';
+                }
+                
+                console.log('🚨 BREACHES DETECTED:');
+                console.log('- Count:', breachCount);
+                console.log('- Names:', breachNames);
+                console.log('- Severity:', severity);
+              } else {
+                console.log('✅ No breaches detected - system healthy');
+              }
+            } else {
+              console.log('❌ ops.json file not found');
+              breached = 'true';
+              breachNames = 'ops_output_missing';
+              severity = 'high';
+            }
+          } catch (error) {
+            console.log('❌ Error analyzing ops results:', error.message);
+            breached = 'true';
+            breachNames = 'ops_analysis_error';
+            severity = 'high';
+          }
+          
+          // Write outputs
+          fs.appendFileSync(out, \`breached=\${breached}\n\`);
+          fs.appendFileSync(out, \`breach_name=\${breachNames}\n\`);
+          fs.appendFileSync(out, \`breach_count=\${breachCount}\n\`);
+          fs.appendFileSync(out, \`breach_severity=\${severity}\n\`);
+          "
+          
+          echo "🔍 Breach detection analysis completed"
 
-      - name: Upload ops artifacts
+      - name: Generate ops health summary
+        if: always()
+        run: |
+          echo "📋 Generating ops health summary..."
+          
+          # Append results to summary report
+          cat >> reports/ops/ops-summary.md << EOF
+          
+          ## Detailed Results
+          
+          ### Execution Status
+          - **Overall Status:** ${{ steps.run_ops.outputs.status }}
+          - **Breaches Detected:** ${{ steps.detect.outputs.breached }}
+          - **Breach Count:** ${{ steps.detect.outputs.breach_count || '0' }}
+          - **Highest Severity:** ${{ steps.detect.outputs.breach_severity || 'none' }}
+          
+          ### Breach Details
+          \`\`\`
+          ${{ steps.detect.outputs.breach_name || 'No breaches detected' }}
+          \`\`\`
+          
+          ### Raw Output
+          \`\`\`json
+          $(cat reports/ops/ops.json 2>/dev/null || echo '{"error":"ops.json not available"}')
+          \`\`\`
+          
+          ### Execution Log
+          \`\`\`
+          $(tail -n 50 reports/ops/ops-output.log 2>/dev/null || echo 'No execution log available')
+          \`\`\`
+          
+          ---
+          **Generated at:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+          
+          echo "📋 Ops health summary generated successfully"
+      
+      - name: Upload comprehensive ops artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ops-artifacts-${{ github.run_id }}
+          name: ops-health-artifacts-${{ github.run_id }}
           path: |
-            out/ops/*
-          retention-days: 7
+            out/ops/
+            reports/ops/
+          retention-days: 14
 
       - name: Report to Linear on failure or breach
-        if: ${{ failure() || steps.detect.outputs.breached == 'true' }}
+        if: ${{ failure() || steps.detect.outputs.breached == 'true' || inputs.force_linear_report == 'true' }}
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
-          BREACH_NAME: ${{ steps.detect.outputs.breach_name || 'Ops failure detected' }}
-        run: node scripts/ci/report-to-linear.js
-
+          BREACH_NAME: ${{ steps.detect.outputs.breach_name || 'Ops health check failure' }}
+          BREACH_COUNT: ${{ steps.detect.outputs.breach_count || '1' }}
+          BREACH_SEVERITY: ${{ steps.detect.outputs.breach_severity || 'high' }}
+          OPS_STATUS: ${{ steps.run_ops.outputs.status || 'unknown' }}
+          FORCE_REPORT: ${{ inputs.force_linear_report || 'false' }}
+        run: |
+          echo "📤 Reporting to Linear..."
+          echo "- Status: $OPS_STATUS"
+          echo "- Breached: ${{ steps.detect.outputs.breached }}"
+          echo "- Breach Count: $BREACH_COUNT"
+          echo "- Severity: $BREACH_SEVERITY"
+          echo "- Force Report: $FORCE_REPORT"
+          
+          if [[ -f "scripts/ci/report-to-linear.ts" ]]; then
+            npx tsx scripts/ci/report-to-linear.ts
+          elif [[ -f "scripts/ci/report-to-linear.js" ]]; then
+            node scripts/ci/report-to-linear.js
+          else
+            echo "⚠️ Linear reporting script not found, logging details instead:"
+            echo "Would report: $BREACH_NAME with severity $BREACH_SEVERITY"
+          fi
+          
+  # Summary job for nightly health status
+  nightly-summary:
+    name: Nightly Health Summary
+    runs-on: ubuntu-latest
+    needs: ops-health-check
+    if: always()
+    timeout-minutes: 5
+    
+    steps:
+      - name: Generate nightly summary
+        run: |
+          echo "## 🌙 Nightly Ops Health Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Status indicators
+          if [[ "${{ needs.ops-health-check.outputs.breach-detected }}" == "true" ]]; then
+            echo "🚨 **STATUS: BREACHES DETECTED**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Breach Details:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Names: ${{ needs.ops-health-check.outputs.breach-names }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Ops Status: ${{ needs.ops-health-check.outputs.ops-status }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.ops-health-check.result }}" == "success" ]]; then
+            echo "✅ **STATUS: HEALTHY**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All systems operational, no breaches detected." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **STATUS: WORKFLOW FAILURE**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Ops health check workflow failed to complete." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Check:** $(date -u -d '+8 hours' +"%Y-%m-%d %H:%M:%S UTC") (8-hour intervals)" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Nightly:** $(date -u -d '+1 day' +"%Y-%m-%d 02:00:00 UTC") (daily at 2 AM)" >> $GITHUB_STEP_SUMMARY

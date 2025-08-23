@@ -1,6 +1,10 @@
 import { setTimeout as sleep } from 'timers/promises';
 
-export type TemporalResult = { ok: boolean; backlog_age_sec?: number; failures?: number };
+export type TemporalResult = {
+  ok: boolean;
+  backlog_age_sec?: number;
+  failures?: number;
+};
 
 export async function runTemporalHealth(): Promise<TemporalResult> {
   // Placeholder Temporal health check: implement real logic later.
@@ -9,8 +13,7 @@ export async function runTemporalHealth(): Promise<TemporalResult> {
 }
 
 if (require.main === module) {
-  runTemporalHealth().then((res) => {
+  runTemporalHealth().then(res => {
     console.log(JSON.stringify(res));
   });
 }
-

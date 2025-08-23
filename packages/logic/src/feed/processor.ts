@@ -1,11 +1,11 @@
-import {
+import type {
   RawFeedData,
   ProcessedFeedItem,
   FeedProcessingConfig,
   FeedProcessingResult,
   ContentNormalizationResult,
-  FEED_CONSTANTS,
 } from './types.js';
+import { FEED_CONSTANTS } from './types.js';
 import { generateItemId, calculateContentHash } from './utils.js';
 
 /**
@@ -24,9 +24,9 @@ export function processFeedData(
     reason: string;
     validationErrors?: string[];
   }> = [];
-  
+
   let totalEnrichmentApplied = 0;
-  
+
   for (const rawItem of rawItems) {
     try {
       // Step 1: Validate required fields
@@ -39,7 +39,7 @@ export function processFeedData(
         });
         continue;
       }
-      
+
       // Step 2: Source filtering
       if (!isSourceAllowed(rawItem.source, config)) {
         rejectedItems.push({
@@ -48,44 +48,50 @@ export function processFeedData(
         });
         continue;
       }
-      
+
       // Step 3: Content processing and normalization
       const normalizedContent = config.enableContentNormalization
         ? normalizeContent(rawItem.content || '', config)
-        : { 
+        : {
             normalizedContent: rawItem.content || '',
             originalLength: rawItem.content?.length || 0,
             normalizedLength: rawItem.content?.length || 0,
             transformationsApplied: [],
             qualityScore: 1.0,
           };
-      
+
       // Step 4: Quality scoring
-      const processingScore = calculateProcessingScore(rawItem, normalizedContent, config);
-      
+      const processingScore = calculateProcessingScore(
+        rawItem,
+        normalizedContent,
+        config
+      );
+
       // Step 5: Enrichment
       const enrichmentFlags: string[] = [];
-      let enrichedPayload = {
+      const enrichedPayload = {
         ...rawItem,
         content: normalizedContent.normalizedContent,
       } as any;
-      
+
       if (config.enrichment.addTimestamps) {
         enrichedPayload.processing_timestamp = currentTime.toISOString();
         enrichmentFlags.push('timestamp_added');
         totalEnrichmentApplied++;
       }
-      
+
       if (config.enrichment.normalizeUrls && rawItem.url) {
         enrichedPayload.normalized_url = normalizeUrl(rawItem.url);
         enrichmentFlags.push('url_normalized');
       }
-      
+
       if (config.enrichment.extractKeywords) {
-        enrichedPayload.extracted_keywords = extractKeywords(normalizedContent.normalizedContent);
+        enrichedPayload.extracted_keywords = extractKeywords(
+          normalizedContent.normalizedContent
+        );
         enrichmentFlags.push('keywords_extracted');
       }
-      
+
       // Add processing metadata
       enrichedPayload.processing_metadata = {
         quality_score: processingScore,
@@ -93,7 +99,7 @@ export function processFeedData(
         processing_version: FEED_CONSTANTS.DEFAULT_PROCESSING_VERSION,
         transformations_applied: normalizedContent.transformationsApplied,
       };
-      
+
       // Step 6: Create processed item
       const processedItem: ProcessedFeedItem = {
         id: generateItemId(rawItem, currentTime),
@@ -108,23 +114,25 @@ export function processFeedData(
           enrichmentFlags,
         },
       };
-      
+
       processedItems.push(processedItem);
-      
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       rejectedItems.push({
         item: rawItem,
         reason: `Processing error: ${errorMessage}`,
       });
     }
   }
-  
+
   // Calculate statistics
-  const averageProcessingScore = processedItems.length > 0
-    ? processedItems.reduce((sum, item) => sum + item.processingScore, 0) / processedItems.length
-    : 0;
-  
+  const averageProcessingScore =
+    processedItems.length > 0
+      ? processedItems.reduce((sum, item) => sum + item.processingScore, 0) /
+        processedItems.length
+      : 0;
+
   const result: FeedProcessingResult = {
     processedItems,
     rejectedItems,
@@ -142,7 +150,7 @@ export function processFeedData(
       processingVersion: FEED_CONSTANTS.DEFAULT_PROCESSING_VERSION,
     },
   };
-  
+
   return result;
 }
 
@@ -156,8 +164,11 @@ export function createDefaultFeedConfig(
   return {
     enableContentNormalization: overrides.enableContentNormalization ?? true,
     enableDeduplication: overrides.enableDeduplication ?? true,
-    maxContentLength: overrides.maxContentLength ?? FEED_CONSTANTS.DEFAULT_MAX_CONTENT_LENGTH,
-    requiredFields: overrides.requiredFields ?? [...FEED_CONSTANTS.REQUIRED_FIELDS],
+    maxContentLength:
+      overrides.maxContentLength ?? FEED_CONSTANTS.DEFAULT_MAX_CONTENT_LENGTH,
+    requiredFields: overrides.requiredFields ?? [
+      ...FEED_CONSTANTS.REQUIRED_FIELDS,
+    ],
     allowedSources: overrides.allowedSources ?? [],
     blockedSources: overrides.blockedSources ?? [],
     qualityThresholds: {
@@ -183,29 +194,39 @@ function validateFeedItem(
   config: FeedProcessingConfig
 ): string[] {
   const errors: string[] = [];
-  
+
   // Check required fields
   for (const field of config.requiredFields) {
     if (!item[field as keyof RawFeedData]) {
       errors.push(`Missing required field: ${field}`);
     }
   }
-  
+
   // Check content length limits
   const content = item.content || '';
   if (content.length > config.maxContentLength) {
-    errors.push(`Content exceeds maximum length: ${content.length} > ${config.maxContentLength}`);
+    errors.push(
+      `Content exceeds maximum length: ${content.length} > ${config.maxContentLength}`
+    );
   }
-  
-  if (content.length > 0 && content.length < config.qualityThresholds.minContentLength) {
-    errors.push(`Content below minimum length: ${content.length} < ${config.qualityThresholds.minContentLength}`);
+
+  if (
+    content.length > 0 &&
+    content.length < config.qualityThresholds.minContentLength
+  ) {
+    errors.push(
+      `Content below minimum length: ${content.length} < ${config.qualityThresholds.minContentLength}`
+    );
   }
-  
+
   // Check type validity
-  if (item.type && !FEED_CONSTANTS.SUPPORTED_CONTENT_TYPES.includes(item.type as any)) {
+  if (
+    item.type &&
+    !FEED_CONSTANTS.SUPPORTED_CONTENT_TYPES.includes(item.type as any)
+  ) {
     errors.push(`Unsupported content type: ${item.type}`);
   }
-  
+
   // Check URL format if present
   if (item.url) {
     try {
@@ -214,7 +235,7 @@ function validateFeedItem(
       errors.push(`Invalid URL format: ${item.url}`);
     }
   }
-  
+
   return errors;
 }
 
@@ -230,12 +251,12 @@ function isSourceAllowed(
   if (config.blockedSources.includes(source)) {
     return false;
   }
-  
+
   // If allowedSources is specified, source must be in the list
   if (config.allowedSources.length > 0) {
     return config.allowedSources.includes(source);
   }
-  
+
   // If no allowed sources specified, all sources are allowed (except blocked)
   return true;
 }
@@ -257,34 +278,34 @@ function normalizeContent(
       qualityScore: 0,
     };
   }
-  
+
   const originalLength = content.length;
   let normalized = content;
   const transformationsApplied: string[] = [];
-  
+
   // Remove excessive whitespace
   const beforeWhitespace = normalized;
   normalized = normalized.replace(/\s+/g, ' ').trim();
   if (normalized !== beforeWhitespace) {
     transformationsApplied.push('whitespace_normalized');
   }
-  
+
   // Remove HTML tags if present
   const beforeHtml = normalized;
   normalized = normalized.replace(/<[^>]*>/g, '');
   if (normalized !== beforeHtml) {
     transformationsApplied.push('html_stripped');
   }
-  
+
   // Truncate if too long
   if (normalized.length > config.maxContentLength) {
     normalized = normalized.substring(0, config.maxContentLength - 3) + '...';
     transformationsApplied.push('truncated');
   }
-  
+
   // Calculate quality score based on content characteristics
   const qualityScore = calculateContentQuality(normalized);
-  
+
   return {
     normalizedContent: normalized,
     originalLength,
@@ -304,28 +325,48 @@ function calculateProcessingScore(
   _config: FeedProcessingConfig
 ): number {
   let score = 0;
-  const weights = { content: 0.4, completeness: 0.3, source: 0.2, freshness: 0.1 };
-  
+  const weights = {
+    content: 0.4,
+    completeness: 0.3,
+    source: 0.2,
+    freshness: 0.1,
+  };
+
   // Content quality (0.4 weight)
   score += normalizedContent.qualityScore * weights.content;
-  
+
   // Field completeness (0.3 weight)
-  const totalFields = ['source', 'type', 'content', 'title', 'description', 'url', 'timestamp'];
-  const presentFields = totalFields.filter(field => item[field as keyof RawFeedData]);
+  const totalFields = [
+    'source',
+    'type',
+    'content',
+    'title',
+    'description',
+    'url',
+    'timestamp',
+  ];
+  const presentFields = totalFields.filter(
+    field => item[field as keyof RawFeedData]
+  );
   const completeness = presentFields.length / totalFields.length;
   score += completeness * weights.completeness;
-  
+
   // Source quality (0.2 weight) - basic heuristic
-  const sourceQuality = item.source.includes('official') ? 1.0 :
-                       item.source.includes('verified') ? 0.8 :
-                       item.source.includes('trusted') ? 0.6 : 0.5;
+  const sourceQuality = item.source.includes('official')
+    ? 1.0
+    : item.source.includes('verified')
+      ? 0.8
+      : item.source.includes('trusted')
+        ? 0.6
+        : 0.5;
   score += sourceQuality * weights.source;
-  
+
   // Freshness (0.1 weight)
-  const freshnessScore = item.timestamp ? 
-    calculateFreshnessScore(new Date(item.timestamp)) : 0.5;
+  const freshnessScore = item.timestamp
+    ? calculateFreshnessScore(new Date(item.timestamp))
+    : 0.5;
   score += freshnessScore * weights.freshness;
-  
+
   return Math.min(1.0, Math.max(0, score));
 }
 
@@ -350,17 +391,18 @@ function normalizeUrl(url: string): string {
 
 function extractKeywords(content: string): string[] {
   // Simple keyword extraction (in production, use more sophisticated NLP)
-  const words = content.toLowerCase()
+  const words = content
+    .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(word => word.length > 3);
-  
+
   // Count word frequency and return top keywords
   const wordCount = new Map<string, number>();
   words.forEach(word => {
     wordCount.set(word, (wordCount.get(word) || 0) + 1);
   });
-  
+
   return Array.from(wordCount.entries())
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10)
@@ -369,42 +411,45 @@ function extractKeywords(content: string): string[] {
 
 function calculateContentQuality(content: string): number {
   if (!content) return 0;
-  
+
   let score = 0;
-  
+
   // Length factor (sweet spot around 100-1000 chars)
-  const lengthScore = content.length < 50 ? content.length / 50 :
-                     content.length > 1000 ? Math.max(0.5, 1 - (content.length - 1000) / 5000) :
-                     1.0;
+  const lengthScore =
+    content.length < 50
+      ? content.length / 50
+      : content.length > 1000
+        ? Math.max(0.5, 1 - (content.length - 1000) / 5000)
+        : 1.0;
   score += lengthScore * 0.3;
-  
+
   // Sentence structure (presence of punctuation)
   const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 0);
   const sentenceScore = Math.min(1, sentences.length / 3);
   score += sentenceScore * 0.2;
-  
+
   // Word diversity
   const words = content.toLowerCase().split(/\s+/);
   const uniqueWords = new Set(words);
   const diversityScore = words.length > 0 ? uniqueWords.size / words.length : 0;
   score += diversityScore * 0.3;
-  
+
   // No excessive repetition
   const repetitionPenalty = detectRepetition(content);
   score += (1 - repetitionPenalty) * 0.2;
-  
+
   return Math.min(1.0, Math.max(0, score));
 }
 
 function detectRepetition(content: string): number {
   const words = content.toLowerCase().split(/\s+/);
   if (words.length < 10) return 0;
-  
+
   const wordCount = new Map<string, number>();
   words.forEach(word => {
     wordCount.set(word, (wordCount.get(word) || 0) + 1);
   });
-  
+
   const maxCount = Math.max(...wordCount.values());
   return Math.min(1, (maxCount - 3) / words.length); // Penalize if any word appears > 3 times
 }
@@ -412,7 +457,7 @@ function detectRepetition(content: string): number {
 function calculateFreshnessScore(timestamp: Date): number {
   const now = new Date();
   const ageHours = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
-  
+
   // Fresh content scores higher
   if (ageHours <= 1) return 1.0;
   if (ageHours <= 6) return 0.9;

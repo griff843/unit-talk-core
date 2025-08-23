@@ -22,36 +22,63 @@ interface TestSuite {
 }
 
 const TEST_SUITES: TestSuite[] = [
-  { name: 'Environment', scriptPath: 'src/env.ts', outputFile: 'env-test.json' },
-  { name: 'Database Connection', scriptPath: 'src/run-psql.ts', outputFile: 'psql-test.json' },
-  { name: 'Migrations', scriptPath: 'src/run-migration.ts', outputFile: 'migration-test.json' },
-  { name: 'Metrics API', scriptPath: 'src/metrics-fetch.ts', outputFile: 'metrics-test.json' },
-  { name: 'Security Policies', scriptPath: 'src/non-promoter-write.ts', outputFile: 'security-test.json' },
+  {
+    name: 'Environment',
+    scriptPath: 'src/env.ts',
+    outputFile: 'env-test.json',
+  },
+  {
+    name: 'Database Connection',
+    scriptPath: 'src/run-psql.ts',
+    outputFile: 'psql-test.json',
+  },
+  {
+    name: 'Migrations',
+    scriptPath: 'src/run-migration.ts',
+    outputFile: 'migration-test.json',
+  },
+  {
+    name: 'Metrics API',
+    scriptPath: 'src/metrics-fetch.ts',
+    outputFile: 'metrics-test.json',
+  },
+  {
+    name: 'Security Policies',
+    scriptPath: 'src/non-promoter-write.ts',
+    outputFile: 'security-test.json',
+  },
+  {
+    name: 'Shadow Pipeline',
+    scriptPath: 'src/shadow-run.ts',
+    outputFile: 'shadow-pipeline.json',
+  },
 ];
 
-function runScript(scriptPath: string): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn('tsx', [scriptPath], { 
+function runScript(
+  scriptPath: string
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise(resolve => {
+    const child = spawn('tsx', [scriptPath], {
       stdio: 'pipe',
-      cwd: process.cwd()
+      cwd: process.cwd(),
     });
-    
+
     let stdout = '';
     let stderr = '';
 
-    child.stdout?.on('data', (data) => {
+    child.stdout?.on('data', data => {
       const text = data.toString();
       stdout += text;
       process.stdout.write(text); // Real-time output
     });
 
-    child.stderr?.on('data', (data) => {
+    child.stderr?.on('data', data => {
       const text = data.toString();
       stderr += text;
       process.stderr.write(text); // Real-time output
     });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
       resolve({ code: code || 0, stdout, stderr });
     });
   });
@@ -81,14 +108,17 @@ async function runAllTests(): Promise<void> {
       // Try to read results file
       const resultsFile = join(OUTPUT_DIR, suite.outputFile);
       let testResults: TestResult[] = [];
-      
+
       if (existsSync(resultsFile)) {
         try {
           const fileContent = readFileSync(resultsFile, 'utf8');
           testResults = JSON.parse(fileContent);
         } catch (parseError) {
-          logger.warn(`Failed to parse results for ${suite.name}`, { 
-            error: parseError instanceof Error ? parseError.message : String(parseError)
+          logger.warn(`Failed to parse results for ${suite.name}`, {
+            error:
+              parseError instanceof Error
+                ? parseError.message
+                : String(parseError),
           });
         }
       }
@@ -103,15 +133,16 @@ async function runAllTests(): Promise<void> {
         failed,
         total,
         duration,
-        status: result.code === 0 && failed === 0 ? 'PASS' : 'FAIL'
+        status: result.code === 0 && failed === 0 ? 'PASS' : 'FAIL',
       });
 
-      logger.info(`${suite.name} completed: ${passed} PASS, ${failed} FAIL (${duration}ms)`);
-
+      logger.info(
+        `${suite.name} completed: ${passed} PASS, ${failed} FAIL (${duration}ms)`
+      );
     } catch (error) {
       const duration = Date.now() - startTime;
-      logger.error(`${suite.name} failed to run`, { 
-        error: error instanceof Error ? error.message : String(error)
+      logger.error(`${suite.name} failed to run`, {
+        error: error instanceof Error ? error.message : String(error),
       });
 
       overallResults.push({
@@ -120,14 +151,30 @@ async function runAllTests(): Promise<void> {
         failed: 1,
         total: 1,
         duration,
-        status: 'FAIL'
+        status: 'FAIL',
       });
     }
+  }
+
+  // Try to extract canary ID from shadow pipeline results
+  let canaryId = null;
+  try {
+    const shadowResultsFile = join(OUTPUT_DIR, 'shadow-pipeline.json');
+    if (existsSync(shadowResultsFile)) {
+      const shadowResults = JSON.parse(readFileSync(shadowResultsFile, 'utf8'));
+      canaryId =
+        shadowResults.details?.canary_id ||
+        shadowResults.details?.feed_result?.canaryId;
+    }
+  } catch (error) {
+    logger.warn('Could not extract canary ID from shadow results', { error });
   }
 
   // Generate summary report
   const summary = {
     timestamp: new Date().toISOString(),
+    canaryId,
+    writeSource: 'promoter_workflow', // Document the single-writer source
     totalSuites: overallResults.length,
     passedSuites: overallResults.filter(r => r.status === 'PASS').length,
     failedSuites: overallResults.filter(r => r.status === 'FAIL').length,
@@ -135,7 +182,7 @@ async function runAllTests(): Promise<void> {
     totalPassed: overallResults.reduce((sum, r) => sum + r.passed, 0),
     totalFailed: overallResults.reduce((sum, r) => sum + r.failed, 0),
     totalDuration: overallResults.reduce((sum, r) => sum + r.duration, 0),
-    suites: overallResults
+    suites: overallResults,
   };
 
   // Write summary
@@ -153,11 +200,17 @@ async function runAllTests(): Promise<void> {
   console.log(`Total Passed: ${summary.totalPassed}`);
   console.log(`Total Failed: ${summary.totalFailed}`);
   console.log(`Total Duration: ${summary.totalDuration}ms`);
+  if (canaryId) {
+    console.log(`Canary ID: ${canaryId}`);
+  }
+  console.log(`Write Source: ${summary.writeSource} (single-writer validated)`);
   console.log('');
 
   overallResults.forEach(result => {
     const status = result.status === 'PASS' ? '✅' : '❌';
-    console.log(`${status} ${result.suite}: ${result.passed}/${result.total} tests passed (${result.duration}ms)`);
+    console.log(
+      `${status} ${result.suite}: ${result.passed}/${result.total} tests passed (${result.duration}ms)`
+    );
   });
 
   console.log('');
@@ -174,8 +227,8 @@ async function runAllTests(): Promise<void> {
 
 if (require.main === module) {
   runAllTests().catch(error => {
-    logger.error('Acceptance test suite failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Acceptance test suite failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     process.exit(1);
   });

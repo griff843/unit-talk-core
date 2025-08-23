@@ -3,21 +3,20 @@
  * This is the ONLY service authorized to write to unified_picks table
  */
 
-import { PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
+import type { RawPropsRow, PromotionConfig } from '@unit-talk/logic';
 import {
-  RawPropsRow,
-  PromotionConfig,
   PromotionResult,
   selectCandidatesForPromotion,
   createDefaultPromotionConfig,
   ensureIdempotency,
 } from '@unit-talk/logic';
+import type { UnifiedPickInsert } from '@unit-talk/db';
 import {
   withPromoterClient,
   insertUnifiedPicksBatch,
   countPromotionsInWindow,
   getExistingPromotions,
-  UnifiedPickInsert,
 } from '@unit-talk/db';
 import { createAnonClient } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
@@ -59,10 +58,13 @@ export async function executePromoterWorkflow(
   config: PromoterConfig = {}
 ): Promise<PromoterOperationResult> {
   const startTime = new Date();
-  
+
   try {
-    logger.info('Starting promoter workflow', { config, timestamp: startTime.toISOString() });
-    
+    logger.info('Starting promoter workflow', {
+      config,
+      timestamp: startTime.toISOString(),
+    });
+
     // Step 1: Create promotion configuration
     const promotionConfig = createDefaultPromotionConfig({
       maxPromotionsPerWindow: config.maxPromotionsPerWindow,
@@ -70,10 +72,13 @@ export async function executePromoterWorkflow(
       minQualityThreshold: config.minQualityThreshold,
       maxAgeHours: config.maxAgeHours,
     });
-    
+
     // Step 2: Read candidates using read-only client (no promoter role needed)
-    const candidates = await getCandidatesForPromotion(promotionConfig, startTime);
-    
+    const candidates = await getCandidatesForPromotion(
+      promotionConfig,
+      startTime
+    );
+
     if (candidates.length === 0) {
       logger.info('No candidates found for promotion');
       return {
@@ -89,28 +94,33 @@ export async function executePromoterWorkflow(
         },
       };
     }
-    
+
     // Step 3: Execute promotion with promoter client (SINGLE WRITER)
-    const result = await withPromoterClient(async (promoterClient) => {
-      return await executePromotionWithClient(promoterClient, candidates, promotionConfig, startTime, config.dryRun);
+    const result = await withPromoterClient(async promoterClient => {
+      return await executePromotionWithClient(
+        promoterClient,
+        candidates,
+        promotionConfig,
+        startTime,
+        config.dryRun
+      );
     });
-    
-    logger.info('Promoter workflow completed', { 
-      promoted: result.promoted, 
+
+    logger.info('Promoter workflow completed', {
+      promoted: result.promoted,
       rejected: result.rejected,
       floodGuardTriggered: result.floodGuardTriggered,
-      duration: Date.now() - startTime.getTime()
+      duration: Date.now() - startTime.getTime(),
     });
-    
+
     return result;
-    
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Promoter workflow failed', { 
-      error: errorMessage, 
-      duration: Date.now() - startTime.getTime()
+    logger.error('Promoter workflow failed', {
+      error: errorMessage,
+      duration: Date.now() - startTime.getTime(),
     });
-    
+
     return {
       success: false,
       promoted: 0,
@@ -136,14 +146,16 @@ async function getCandidatesForPromotion(
   currentTime: Date
 ): Promise<RawPropsRow[]> {
   const anonClient = createAnonClient();
-  const cutoffTime = new Date(currentTime.getTime() - (config.maxAgeHours * 60 * 60 * 1000));
-  
+  const cutoffTime = new Date(
+    currentTime.getTime() - config.maxAgeHours * 60 * 60 * 1000
+  );
+
   try {
-    logger.debug('Fetching promotion candidates', { 
+    logger.debug('Fetching promotion candidates', {
       cutoffTime: cutoffTime.toISOString(),
-      maxAge: config.maxAgeHours 
+      maxAge: config.maxAgeHours,
     });
-    
+
     // Query for processed candidates within age limit
     const { data, error } = await anonClient
       .from('raw_props')
@@ -152,22 +164,21 @@ async function getCandidatesForPromotion(
       .gte('inserted_at', cutoffTime.toISOString()) // Within age limit
       .order('inserted_at', { ascending: false })
       .limit(1000); // Reasonable batch size
-    
+
     if (error) {
       throw new Error(`Failed to fetch candidates: ${error.message}`);
     }
-    
+
     if (!data || data.length === 0) {
       logger.debug('No promotion candidates found');
       return [];
     }
-    
+
     logger.info('Fetched promotion candidates', { count: data.length });
     return data as RawPropsRow[];
-    
   } catch (error) {
-    logger.error('Failed to get candidates for promotion', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Failed to get candidates for promotion', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -187,23 +198,31 @@ async function executePromotionWithClient(
   try {
     // Step 1: Get existing promotions for deduplication
     const candidateIds = candidates.map(c => c.id);
-    const existingPromotions = await getExistingPromotions(promoterClient, candidateIds);
+    const existingPromotions = await getExistingPromotions(
+      promoterClient,
+      candidateIds
+    );
     const existingRawIds = existingPromotions.map(p => p.raw_id);
-    
-    logger.debug('Existing promotions check', { 
-      candidates: candidateIds.length, 
-      existing: existingRawIds.length 
+
+    logger.debug('Existing promotions check', {
+      candidates: candidateIds.length,
+      existing: existingRawIds.length,
     });
-    
+
     // Step 2: Count current promotions in window (flood guard)
-    const windowStart = new Date(currentTime.getTime() - (config.windowSizeMinutes * 60 * 1000));
-    const currentPromotionsCount = await countPromotionsInWindow(promoterClient, windowStart);
-    
-    logger.debug('Flood guard check', { 
-      currentPromotions: currentPromotionsCount, 
-      limit: config.maxPromotionsPerWindow 
+    const windowStart = new Date(
+      currentTime.getTime() - config.windowSizeMinutes * 60 * 1000
+    );
+    const currentPromotionsCount = await countPromotionsInWindow(
+      promoterClient,
+      windowStart
+    );
+
+    logger.debug('Flood guard check', {
+      currentPromotions: currentPromotionsCount,
+      limit: config.maxPromotionsPerWindow,
     });
-    
+
     // Step 3: Apply pure business logic (no I/O)
     const promotionResult = selectCandidatesForPromotion(
       candidates,
@@ -211,41 +230,48 @@ async function executePromotionWithClient(
       config,
       currentTime
     );
-    
+
     // Step 4: Apply final idempotency check
     const finalCandidates = ensureIdempotency(
       promotionResult.selectedCandidates,
       existingPromotions
     );
-    
+
     logger.info('Promotion selection completed', {
       selected: finalCandidates.length,
       rejected: promotionResult.rejectedCandidates.length,
       floodGuardTriggered: promotionResult.floodGuardTriggered,
     });
-    
+
     let promotedIds: string[] = [];
-    
+
     // Step 5: Execute writes (SINGLE WRITER PATTERN)
     if (finalCandidates.length > 0 && !dryRun) {
-      const picksToInsert: UnifiedPickInsert[] = finalCandidates.map(candidate => ({
-        raw_id: candidate.rawId,
-        data: candidate.payload,
-        promoted_at: currentTime,
-      }));
-      
-      const insertedPicks = await insertUnifiedPicksBatch(promoterClient, picksToInsert);
+      const picksToInsert: UnifiedPickInsert[] = finalCandidates.map(
+        candidate => ({
+          raw_id: candidate.rawId,
+          data: candidate.payload,
+          promoted_at: currentTime,
+        })
+      );
+
+      const insertedPicks = await insertUnifiedPicksBatch(
+        promoterClient,
+        picksToInsert
+      );
       promotedIds = insertedPicks.map(p => p.id);
-      
-      logger.info('Unified picks inserted', { 
+
+      logger.info('Unified picks inserted', {
         count: insertedPicks.length,
-        ids: promotedIds 
+        ids: promotedIds,
       });
     } else if (dryRun) {
-      logger.info('DRY RUN - Would have promoted', { count: finalCandidates.length });
+      logger.info('DRY RUN - Would have promoted', {
+        count: finalCandidates.length,
+      });
       promotedIds = finalCandidates.map(c => `dry-run-${c.rawId}`);
     }
-    
+
     return {
       success: true,
       promoted: finalCandidates.length,
@@ -259,10 +285,9 @@ async function executePromotionWithClient(
         configUsed: config,
       },
     };
-    
   } catch (error) {
-    logger.error('Promotion execution failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Promotion execution failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -273,25 +298,27 @@ async function executePromotionWithClient(
  */
 export async function testPromoterConnection(): Promise<boolean> {
   try {
-    await withPromoterClient(async (client) => {
+    await withPromoterClient(async client => {
       // Test basic query with promoter role
-      const result = await client.query("SELECT current_setting('app.role', true) as role, NOW() as timestamp");
+      const result = await client.query(
+        "SELECT current_setting('app.role', true) as role, NOW() as timestamp"
+      );
       const row = result.rows[0];
-      
+
       if (row.role !== 'promoter') {
         throw new Error(`Expected promoter role, got: ${row.role}`);
       }
-      
-      logger.debug('Promoter connection test successful', { 
-        role: row.role, 
-        timestamp: row.timestamp 
+
+      logger.debug('Promoter connection test successful', {
+        role: row.role,
+        timestamp: row.timestamp,
       });
     });
-    
+
     return true;
   } catch (error) {
-    logger.error('Promoter connection test failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Promoter connection test failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
     return false;
   }

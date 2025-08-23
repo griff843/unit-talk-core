@@ -1,4 +1,5 @@
-import { Pool, Client, PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
+import { Pool, Client } from 'pg';
 import { getConfig } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
 
@@ -20,17 +21,18 @@ export function getPromoterPool(): Pool {
   }
 
   const config = getConfig();
-  
+
   promoterPool = new Pool({
     connectionString: config.DATABASE_URL,
     max: 5, // Small pool size - single writer pattern
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-    ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl:
+      config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   });
 
   // Handle pool errors
-  promoterPool.on('error', (err) => {
+  promoterPool.on('error', err => {
     logger.error('Promoter PostgreSQL pool error', { error: err.message });
   });
 
@@ -50,13 +52,15 @@ export async function getPromoterClient(): Promise<PoolClient> {
     // CRITICAL: Set app.role='promoter' to bypass RLS and trigger validation
     await client.query("SELECT set_config('app.role', 'promoter', true)");
     logger.debug('Promoter role set on client connection');
-    
+
     return client;
   } catch (error) {
     // Release client on error
     client.release();
     logger.error('Failed to set promoter role', { error });
-    throw new Error(`Failed to set promoter role: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to set promoter role: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -68,7 +72,7 @@ export async function withPromoterClient<T>(
   fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
   const client = await getPromoterClient();
-  
+
   try {
     return await fn(client);
   } finally {
@@ -92,46 +96,51 @@ export async function insertUnifiedPick(
 ): Promise<{ id: string; promoted_at: string }> {
   try {
     const promoted_at = pick.promoted_at || new Date();
-    
+
     const result = await client.query(
       `INSERT INTO unified_picks (raw_id, promoted_at, data) 
        VALUES ($1, $2, $3) 
        RETURNING id, promoted_at`,
       [pick.raw_id, promoted_at.toISOString(), JSON.stringify(pick.data)]
     );
-    
+
     if (result.rows.length === 0) {
       throw new Error('Insert returned no rows - possible RLS violation');
     }
-    
+
     const inserted = result.rows[0];
-    logger.info('Unified pick inserted successfully', { 
-      id: inserted.id, 
+    logger.info('Unified pick inserted successfully', {
+      id: inserted.id,
       raw_id: pick.raw_id,
-      promoted_at: inserted.promoted_at 
+      promoted_at: inserted.promoted_at,
     });
-    
+
     return {
       id: inserted.id,
       promoted_at: inserted.promoted_at,
     };
-    
   } catch (error: any) {
     // Surface specific PostgreSQL errors clearly
     if (error.code === '42501') {
-      throw new Error('Access denied: app.role must be set to promoter (RLS violation)');
+      throw new Error(
+        'Access denied: app.role must be set to promoter (RLS violation)'
+      );
     }
     if (error.code === '23503') {
-      throw new Error(`Foreign key violation: raw_id ${pick.raw_id} does not exist`);
+      throw new Error(
+        `Foreign key violation: raw_id ${pick.raw_id} does not exist`
+      );
     }
     if (error.code === '23505') {
-      throw new Error(`Duplicate key violation: pick for raw_id ${pick.raw_id} already exists`);
+      throw new Error(
+        `Duplicate key violation: pick for raw_id ${pick.raw_id} already exists`
+      );
     }
-    
-    logger.error('Failed to insert unified pick', { 
-      error: error.message, 
+
+    logger.error('Failed to insert unified pick', {
+      error: error.message,
       code: error.code,
-      raw_id: pick.raw_id 
+      raw_id: pick.raw_id,
     });
     throw error;
   }
@@ -148,12 +157,13 @@ export async function insertUnifiedPicksBatch(
   if (picks.length === 0) {
     return [];
   }
-  
+
   try {
     await client.query('BEGIN');
-    
-    const results: Array<{ id: string; raw_id: string; promoted_at: string }> = [];
-    
+
+    const results: Array<{ id: string; raw_id: string; promoted_at: string }> =
+      [];
+
     for (const pick of picks) {
       const result = await insertUnifiedPick(client, pick);
       results.push({
@@ -162,17 +172,18 @@ export async function insertUnifiedPicksBatch(
         promoted_at: result.promoted_at,
       });
     }
-    
+
     await client.query('COMMIT');
-    
-    logger.info('Batch unified picks inserted successfully', { count: results.length });
+
+    logger.info('Batch unified picks inserted successfully', {
+      count: results.length,
+    });
     return results;
-    
   } catch (error) {
     await client.query('ROLLBACK');
-    logger.error('Batch unified picks insert failed', { 
+    logger.error('Batch unified picks insert failed', {
       error: error instanceof Error ? error.message : String(error),
-      count: picks.length 
+      count: picks.length,
     });
     throw error;
   }
@@ -191,12 +202,12 @@ export async function countPromotionsInWindow(
       'SELECT COUNT(*) as count FROM unified_picks WHERE promoted_at >= $1',
       [windowStartTime.toISOString()]
     );
-    
+
     return parseInt(result.rows[0].count, 10);
   } catch (error) {
-    logger.error('Failed to count promotions in window', { 
+    logger.error('Failed to count promotions in window', {
       error: error instanceof Error ? error.message : String(error),
-      windowStart: windowStartTime.toISOString()
+      windowStart: windowStartTime.toISOString(),
     });
     throw error;
   }
@@ -213,19 +224,19 @@ export async function getExistingPromotions(
   if (rawIds.length === 0) {
     return [];
   }
-  
+
   try {
     const placeholders = rawIds.map((_, i) => `$${i + 1}`).join(', ');
     const result = await client.query(
       `SELECT raw_id, promoted_at FROM unified_picks WHERE raw_id IN (${placeholders})`,
       rawIds
     );
-    
+
     return result.rows;
   } catch (error) {
-    logger.error('Failed to get existing promotions', { 
+    logger.error('Failed to get existing promotions', {
       error: error instanceof Error ? error.message : String(error),
-      rawIds: rawIds.length 
+      rawIds: rawIds.length,
     });
     throw error;
   }
@@ -241,34 +252,36 @@ export async function checkPromoterHealth(): Promise<{
   details: Record<string, any>;
 }> {
   try {
-    const result = await withPromoterClient(async (client) => {
+    const result = await withPromoterClient(async client => {
       // Test 1: Verify role is set
-      const roleResult = await client.query("SELECT current_setting('app.role', true) as role");
+      const roleResult = await client.query(
+        "SELECT current_setting('app.role', true) as role"
+      );
       const currentRole = roleResult.rows[0]?.role;
-      
+
       if (currentRole !== 'promoter') {
         throw new Error(`Expected role 'promoter', got '${currentRole}'`);
       }
-      
+
       // Test 2: Test basic query
       await client.query('SELECT 1');
-      
+
       return {
         role: currentRole,
         connectionTest: 'passed',
       };
     });
-    
+
     return {
       healthy: true,
       timestamp: new Date().toISOString(),
       details: result,
     };
   } catch (error) {
-    logger.error('Promoter health check failed', { 
-      error: error instanceof Error ? error.message : String(error)
+    logger.error('Promoter health check failed', {
+      error: error instanceof Error ? error.message : String(error),
     });
-    
+
     return {
       healthy: false,
       timestamp: new Date().toISOString(),

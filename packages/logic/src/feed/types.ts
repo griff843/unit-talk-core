@@ -172,5 +172,6 @@ export const FEED_CONSTANTS = {
 } as const;
 
 // Re-export for convenience
-export type SupportedContentType = typeof FEED_CONSTANTS.SUPPORTED_CONTENT_TYPES[number];
-export type EnrichmentFlag = typeof FEED_CONSTANTS.ENRICHMENT_FLAGS[number];
+export type SupportedContentType =
+  (typeof FEED_CONSTANTS.SUPPORTED_CONTENT_TYPES)[number];
+export type EnrichmentFlag = (typeof FEED_CONSTANTS.ENRICHMENT_FLAGS)[number];

@@ -7,20 +7,17 @@ import { proxyActivities } from '@temporalio/workflow';
 import type * as activities from '../activities/gradingActivities.js';
 
 // Proxy activities with timeout configuration
-const {
-  executeGradingWorkflow,
-  gradeSinglePick,
-  testGradingConnection,
-} = proxyActivities<typeof activities>({
-  startToCloseTimeout: '10m', // 10 minutes for grading operations
-  heartbeatTimeout: '30s',
-  retryPolicy: {
-    initialInterval: '5s',
-    maximumInterval: '1m',
-    backoffCoefficient: 2,
-    maximumAttempts: 3,
-  },
-});
+const { executeGradingWorkflow, gradeSinglePick, testGradingConnection } =
+  proxyActivities<typeof activities>({
+    startToCloseTimeout: '10m', // 10 minutes for grading operations
+    heartbeatTimeout: '30s',
+    retryPolicy: {
+      initialInterval: '5s',
+      maximumInterval: '1m',
+      backoffCoefficient: 2,
+      maximumAttempts: 3,
+    },
+  });
 
 /**
  * Workflow configuration for grading operations
@@ -82,10 +79,9 @@ export async function gradingWorkflow(
       processingTime: result.metadata.processingTime,
       error: result.error,
     };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     return {
       success: false,
       graded: 0,
@@ -119,7 +115,7 @@ export async function singlePickGradingWorkflow(
 
   try {
     const result = await gradeSinglePick(pickId, workflowConfig);
-    
+
     if (!result) {
       return {
         success: false,
@@ -140,10 +136,9 @@ export async function singlePickGradingWorkflow(
       },
       marketOutcome: result.marketOutcome,
     };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     return {
       success: false,
       pickId,
@@ -162,15 +157,14 @@ export async function gradingHealthCheckWorkflow(): Promise<{
 }> {
   try {
     const connectionOk = await testGradingConnection();
-    
+
     return {
       success: connectionOk,
       connectionOk,
     };
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     return {
       success: false,
       connectionOk: false,

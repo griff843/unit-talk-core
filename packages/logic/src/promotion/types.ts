@@ -104,9 +104,9 @@ export const PROMOTION_CONSTANTS = {
   DEFAULT_DEDUPE_LOOKBACK_HOURS: 48,
   DEFAULT_SCORING_WEIGHTS: {
     time: 0.25 as number,
-    quality: 0.30 as number,
-    uniqueness: 0.20 as number,
+    quality: 0.3 as number,
+    uniqueness: 0.2 as number,
     source: 0.15 as number,
-    market: 0.10 as number,
+    market: 0.1 as number,
   },
 } as const;

@@ -2,15 +2,14 @@
  * Pure grading rules and scoring logic - no I/O operations
  */
 
-import {
+import type {
   GradingInput,
   GradingResult,
   GradingConfig,
   FactorResult,
   MarketOutcome,
-  GRADING_CONSTANTS,
-  GradingError,
 } from './types.js';
+import { GRADING_CONSTANTS, GradingError } from './types.js';
 
 /**
  * Calculate composite grading score from factor results
@@ -34,29 +33,33 @@ export function calculateCompositeScore(
 
   // Calculate weighted score
   const totalWeight = factors.reduce((sum, factor) => sum + factor.weight, 0);
-  
+
   if (totalWeight === 0) {
-    throw new GradingError('No factors have positive weights', 'INVALID_WEIGHTS');
+    throw new GradingError(
+      'No factors have positive weights',
+      'INVALID_WEIGHTS'
+    );
   }
 
   const weightedScore = factors.reduce((sum, factor) => {
-    return sum + (factor.score * factor.weight);
+    return sum + factor.score * factor.weight;
   }, 0);
 
   const totalScore = weightedScore / totalWeight;
 
   // Calculate confidence level (weighted average of factor confidences)
   const weightedConfidence = factors.reduce((sum, factor) => {
-    return sum + (factor.confidence * factor.weight);
+    return sum + factor.confidence * factor.weight;
   }, 0);
   const confidenceLevel = weightedConfidence / totalWeight;
 
   // Calculate quality score (consistency and data availability)
   const scoreVariance = calculateScoreVariance(factors);
-  const dataQuality = factors.reduce((sum, factor) => {
-    return sum + (factor.metadata?.dataAvailable ? 1 : 0.5);
-  }, 0) / factors.length;
-  
+  const dataQuality =
+    factors.reduce((sum, factor) => {
+      return sum + (factor.metadata?.dataAvailable ? 1 : 0.5);
+    }, 0) / factors.length;
+
   const qualityScore = Math.min(1.0, dataQuality * (1 - scoreVariance / 100));
 
   return {
@@ -77,9 +80,9 @@ export function determineTier(
 ): 'S' | 'A' | 'B' | 'C' | 'D' {
   // Apply confidence penalty to score for tier determination
   const adjustedScore = score * confidence;
-  
+
   const thresholds = config.tierThresholds;
-  
+
   if (adjustedScore >= thresholds.S && confidence >= 0.8) return 'S';
   if (adjustedScore >= thresholds.A && confidence >= 0.65) return 'A';
   if (adjustedScore >= thresholds.B && confidence >= 0.5) return 'B';
@@ -127,10 +130,12 @@ export function applyQualityFilters(
   config: GradingConfig
 ): { passed: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  
+
   // Check minimum quality threshold
   if (result.gradingMetadata.qualityScore < config.qualityThreshold) {
-    reasons.push(`Quality score ${result.gradingMetadata.qualityScore.toFixed(3)} below threshold ${config.qualityThreshold}`);
+    reasons.push(
+      `Quality score ${result.gradingMetadata.qualityScore.toFixed(3)} below threshold ${config.qualityThreshold}`
+    );
   }
 
   // Check minimum confidence for tier
@@ -143,20 +148,30 @@ export function applyQualityFilters(
   };
 
   if (result.confidenceLevel < minConfidenceForTier[result.tier]) {
-    reasons.push(`Confidence ${result.confidenceLevel.toFixed(3)} too low for tier ${result.tier}`);
+    reasons.push(
+      `Confidence ${result.confidenceLevel.toFixed(3)} too low for tier ${result.tier}`
+    );
   }
 
   // Check for extreme scores without sufficient justification
-  if ((result.totalScore > 90 || result.totalScore < 10) && result.confidenceLevel < 0.9) {
-    reasons.push(`Extreme score ${result.totalScore} requires higher confidence than ${result.confidenceLevel.toFixed(3)}`);
+  if (
+    (result.totalScore > 90 || result.totalScore < 10) &&
+    result.confidenceLevel < 0.9
+  ) {
+    reasons.push(
+      `Extreme score ${result.totalScore} requires higher confidence than ${result.confidenceLevel.toFixed(3)}`
+    );
   }
 
   // Check factor consistency
   const factorScores = Object.values(result.factorBreakdown);
   if (factorScores.length > 1) {
     const variance = calculateVariance(factorScores);
-    if (variance > 900) { // High variance in factor scores
-      reasons.push(`Factor scores show high variance (${variance.toFixed(1)}), indicating inconsistent analysis`);
+    if (variance > 900) {
+      // High variance in factor scores
+      reasons.push(
+        `Factor scores show high variance (${variance.toFixed(1)}), indicating inconsistent analysis`
+      );
     }
   }
 
@@ -194,7 +209,8 @@ export function createDefaultGradingConfig(
       ...GRADING_CONSTANTS.TIER_THRESHOLDS,
       ...overrides.tierThresholds,
     },
-    qualityThreshold: overrides.qualityThreshold || GRADING_CONSTANTS.DEFAULT_QUALITY_THRESHOLD,
+    qualityThreshold:
+      overrides.qualityThreshold || GRADING_CONSTANTS.DEFAULT_QUALITY_THRESHOLD,
     shadowMode: overrides.shadowMode || false,
   };
 }
@@ -210,27 +226,40 @@ export function validateGradingConfig(config: GradingConfig): {
   const errors: string[] = [];
 
   // Check factor weights sum to approximately 1.0
-  const totalWeight = Object.values(config.factorWeights).reduce((sum, weight) => sum + weight, 0);
+  const totalWeight = Object.values(config.factorWeights).reduce(
+    (sum, weight) => sum + weight,
+    0
+  );
   if (Math.abs(totalWeight - 1.0) > 0.01) {
-    errors.push(`Factor weights sum to ${totalWeight.toFixed(3)}, should be 1.0`);
+    errors.push(
+      `Factor weights sum to ${totalWeight.toFixed(3)}, should be 1.0`
+    );
   }
 
   // Check individual weights are reasonable
   for (const [factorId, weight] of Object.entries(config.factorWeights)) {
     if (weight < 0 || weight > 1) {
-      errors.push(`Factor weight for ${factorId} is ${weight}, should be between 0 and 1`);
+      errors.push(
+        `Factor weight for ${factorId} is ${weight}, should be between 0 and 1`
+      );
     }
   }
 
   // Check tier thresholds are ordered
   const thresholds = config.tierThresholds;
-  if (thresholds.S <= thresholds.A || thresholds.A <= thresholds.B || thresholds.B <= thresholds.C) {
+  if (
+    thresholds.S <= thresholds.A ||
+    thresholds.A <= thresholds.B ||
+    thresholds.B <= thresholds.C
+  ) {
     errors.push('Tier thresholds must be in descending order: S > A > B > C');
   }
 
   // Check quality threshold is reasonable
   if (config.qualityThreshold < 0 || config.qualityThreshold > 1) {
-    errors.push(`Quality threshold ${config.qualityThreshold} should be between 0 and 1`);
+    errors.push(
+      `Quality threshold ${config.qualityThreshold} should be between 0 and 1`
+    );
   }
 
   // Check enabled factors have corresponding weights
@@ -270,10 +299,11 @@ export function calculateRiskScore(
   riskScore += scoreVariance / 10;
 
   // Add risk for missing data
-  const dataCompleteness = factors.reduce((sum, factor) => {
-    return sum + (factor.metadata?.dataAvailable ? 1 : 0);
-  }, 0) / factors.length;
-  
+  const dataCompleteness =
+    factors.reduce((sum, factor) => {
+      return sum + (factor.metadata?.dataAvailable ? 1 : 0);
+    }, 0) / factors.length;
+
   riskScore += (1 - dataCompleteness) * 20;
 
   return Math.max(0, Math.min(100, riskScore));
@@ -283,17 +313,22 @@ export function calculateRiskScore(
 
 function calculateScoreVariance(factors: FactorResult[]): number {
   if (factors.length <= 1) return 0;
-  
+
   const scores = factors.map(f => f.score);
   const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-  const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
-  
+  const variance =
+    scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) /
+    scores.length;
+
   return variance;
 }
 
 function calculateVariance(values: number[]): number {
   if (values.length <= 1) return 0;
-  
+
   const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
-  return values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+  return (
+    values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
+    values.length
+  );
 }
