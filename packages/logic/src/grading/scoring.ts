@@ -3,8 +3,6 @@
  * No I/O operations, fully deterministic and testable
  */
 
-import type { GradingInput, GradingResult, GradingConfig } from './types.js';
-import { GradingError, GRADING_CONSTANTS } from './types.js';
 import { calculateAllFactors, validateFactorResults } from './features.js';
 import {
   calculateCompositeScore,
@@ -14,6 +12,8 @@ import {
   calculateEdgeScore,
   calculateRiskScore,
 } from './rules.js';
+import type { GradingInput, GradingResult, GradingConfig } from './types.js';
+import { GradingError, GRADING_CONSTANTS } from './types.js';
 
 /**
  * Main grading orchestration function

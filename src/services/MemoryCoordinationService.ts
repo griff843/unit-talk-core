@@ -1,7 +1,7 @@
 import { createLogger } from '@unit-talk/observability';
-import { MemoryCoordinationAgent } from '../agents/MemoryCoordinationAgent';
-import type { Task } from '../types/TaskTypes';
 import { z } from 'zod';
+
+import { MemoryCoordinationAgent } from '../agents/MemoryCoordinationAgent';
 
 const logger = createLogger('memory-service');
 

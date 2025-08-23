@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 
+import { spawn } from 'child_process';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { spawn } from 'child_process';
+
 import { logger } from '@unit-talk/observability';
 
 const OUTPUT_DIR = join(process.cwd(), 'out/acceptance');

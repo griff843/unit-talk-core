@@ -3,15 +3,15 @@
  * Handles alert processing, notification delivery, and subscription management
  */
 
+import { logger } from '@unit-talk/observability';
+
 import type { AlertAdapterConfig } from '../adapters/alertAdapter.js';
 import {
   processAlertQueue,
   sendNotifications,
   manageAlertSubscriptions,
   testAlertAdapter,
-  AlertOperationResult,
 } from '../adapters/alertAdapter.js';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Process alerts activity

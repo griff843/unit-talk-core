@@ -6,8 +6,9 @@
  * intelligence state across sessions.
  */
 
-import { HiveMindResumeService } from '../services/HiveMindResumeService';
 import { createLogger } from '@unit-talk/observability';
+
+import { HiveMindResumeService } from '../services/HiveMindResumeService';
 
 const logger = createLogger('hive-mind-resume-command');
 

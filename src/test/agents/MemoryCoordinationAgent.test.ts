@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
+
 import { MemoryCoordinationAgent } from '../../agents/MemoryCoordinationAgent';
 
 describe('MemoryCoordinationAgent', () => {

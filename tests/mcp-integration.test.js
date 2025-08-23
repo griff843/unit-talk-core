@@ -3,8 +3,8 @@
  * Comprehensive test suite for MCP server integration
  */
 
-const { MCPIntegration, MCPIntegrationError, CircuitBreaker } = require('../src/mcp-integration');
 const { MCPAuthManager } = require('../src/auth-patterns');
+const { MCPIntegration, MCPIntegrationError, CircuitBreaker } = require('../src/mcp-integration');
 
 describe('MCP Integration Tests', () => {
   let mcpIntegration;

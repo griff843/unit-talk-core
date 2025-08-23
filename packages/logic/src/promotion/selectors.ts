@@ -1,10 +1,3 @@
-import type {
-  PromotionCandidate,
-  PromotionConfig,
-  PromotionResult,
-  RawPropsRow,
-} from './types.js';
-import { PROMOTION_CONSTANTS } from './types.js';
 import {
   calculateEligibilityFactors,
   calculatePromotionScore,
@@ -12,6 +5,13 @@ import {
   applyFloodGuard,
   validatePromotionResult,
 } from './rules.js';
+import type {
+  PromotionCandidate,
+  PromotionConfig,
+  PromotionResult,
+  RawPropsRow,
+} from './types.js';
+import { PROMOTION_CONSTANTS } from './types.js';
 
 /**
  * Main promotion selection algorithm

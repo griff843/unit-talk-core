@@ -3,15 +3,15 @@
  * Handles analytics processing, reporting, and metrics collection
  */
 
+import { logger } from '@unit-talk/observability';
+
 import type { AnalyticsAdapterConfig } from '../adapters/analyticsAdapter.js';
 import {
   executeAnalyticsWorkflow,
   generateAnalyticsReports,
   collectAnalyticsMetrics,
   testAnalyticsAdapter,
-  AnalyticsOperationResult,
 } from '../adapters/analyticsAdapter.js';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Execute analytics processing activity

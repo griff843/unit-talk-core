@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
 
 interface DevOpsAudit {
   timestamp: string;

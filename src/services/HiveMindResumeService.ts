@@ -6,9 +6,10 @@
  * and coordination patterns.
  */
 
-import { MemoryCoordinationAgent } from '../agents/MemoryCoordinationAgent';
 import { createLogger } from '@unit-talk/observability';
 import { z } from 'zod';
+
+import { MemoryCoordinationAgent } from '../agents/MemoryCoordinationAgent';
 
 const logger = createLogger('hive-mind-resume');
 

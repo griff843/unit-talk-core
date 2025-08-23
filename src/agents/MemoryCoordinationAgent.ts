@@ -1,5 +1,6 @@
 import { createLogger } from '@unit-talk/observability';
 import { z } from 'zod';
+
 import type { Task } from '../types/TaskTypes';
 
 const logger = createLogger('memory-coordination');

@@ -4,7 +4,7 @@
  * All functions are deterministic and fully testable
  */
 
-import { StatisticalUtils, SportSpecificUtils } from './statistical-utils.js';
+import { StatisticalUtils } from './statistical-utils.js';
 import type { GradingInput, FactorResult } from './types.js';
 import { GRADING_CONSTANTS } from './types.js';
 

@@ -1,8 +1,8 @@
-import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { NodeSDK } from '@opentelemetry/sdk-node';
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { getConfig } from '@unit-talk/config';
 
 // Initialize OpenTelemetry SDK
@@ -143,6 +143,11 @@ export const logger = new Logger();
 export function createLogger(serviceName: string, logLevel?: LogLevel): Logger {
   return new Logger(serviceName, logLevel);
 }
+
+// Export SLO monitoring components
+export { SLOMonitor, sloMonitor, type SLOMeasurement, type LatencyDataPoint } from './slo-monitor.js';
+export { SLOCollector, sloCollector } from './slo-collector.js';
+export { SLOReporter, sloReporter, type SLOReport, type DashboardSLOData } from './slo-reporter.js';
 
 // Export types for external use
 export type { Logger };

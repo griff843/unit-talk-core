@@ -1,7 +1,8 @@
-import express from 'express';
-import rateLimit from 'express-rate-limit';
 import { config } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+
 import { healthRouter } from './routes/health.js';
 import { metricsRouter } from './routes/metrics.js';
 

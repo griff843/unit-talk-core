@@ -3,25 +3,20 @@
  * This service is READ-ONLY - does not write to unified_picks (Promoter owns that)
  */
 
-import { PoolClient } from 'pg';
+import type { UnifiedPickRow } from '@unit-talk/db';
+import { createAnonClient } from '@unit-talk/db';
 import type {
   GradingInput,
   GradingResult,
   GradingConfig,
   MarketOutcome,
-} from '@unit-talk/logic';
+
+  FactorCalculatorRegistry} from '@unit-talk/logic';
 import {
   gradeProposition,
   gradeBatchPropositions,
   GRADING_CONSTANTS,
 } from '@unit-talk/logic';
-import {
-  FactorCalculatorRegistry,
-  type FactorCalculationContext,
-  StatisticalUtils,
-} from '@unit-talk/logic';
-import type { UnifiedPickRow } from '@unit-talk/db';
-import { createAnonClient, RawPropsRow } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
 
 /**

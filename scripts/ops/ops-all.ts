@@ -53,6 +53,7 @@ import { closeConnections } from '../shared/db';
 import { runRlsWatch } from './rls-watch';
 import { runTemporalHealth } from './temporal-health';
 import { checkColumns } from '../db/column-check';
+import { runDriftDetection } from './drift';
 
 // ============================================================================
 // CONFIGURATION AND CONSTANTS
@@ -333,7 +334,7 @@ async function main() {
 
   try {
     // Execute all operational checks in parallel with enhanced validation
-    const [enhancedParity, enhancedHealth, rls, temporal, columnCheck] =
+    const [enhancedParity, enhancedHealth, rls, temporal, columnCheck, driftDetection] =
       (await Promise.all([
         withTimeout(
           runEnhancedParityCheck(),
@@ -348,6 +349,7 @@ async function main() {
         withTimeout(runRlsWatch(), TIMEOUT_MS, 'rls-watch'),
         withTimeout(runTemporalHealth(), TIMEOUT_MS, 'temporal-health'),
         withTimeout(checkColumns(), TIMEOUT_MS, 'column-check'),
+        withTimeout(runDriftDetection(), TIMEOUT_MS * 2, 'drift-detection'), // Extra time for statistical analysis
       ]).catch(async err => {
         // Critical execution failure - create high severity breach report
         const executionTime = Date.now() - executionStarted;
@@ -379,6 +381,7 @@ async function main() {
             rls: { ok: false, violations: -1 },
             temporal: { ok: false, backlog_age_sec: -1, failures: -1 },
             schema: { ok: false, missing: [], found: [] },
+            drift: { ok: false, risk_level: 'high', features_analyzed: 0, drift_score: 1.0 },
           },
         };
 
@@ -413,6 +416,15 @@ async function main() {
         method: columnCheck.method,
         timestamp: columnCheck.timestamp,
       },
+      drift: {
+        ok: driftDetection.ok,
+        risk_level: driftDetection.risk_level,
+        features_analyzed: driftDetection.features_analyzed,
+        features_with_alerts: driftDetection.features_with_alerts,
+        features_with_warnings: driftDetection.features_with_warnings,
+        drift_score: driftDetection.drift_score,
+        error: driftDetection.error,
+      },
       shadow_fallbacks: {
         processed_fallback: columnCheck.method === 'direct-pg',
         supabase_available: columnCheck.method === 'supabase',
@@ -442,6 +454,13 @@ async function main() {
         'unified_picks.raw_id',
       ],
       strategy: 'supabase-client with direct-pg fallback',
+    };
+    componentNotes.drift = {
+      analysisMethods: ['Kolmogorov-Smirnov test', 'Population Stability Index'],
+      baselineWindow: '30-day rolling window',
+      analysisWindow: 'last 24 hours',
+      statisticalTests: 'KS test for distribution drift, PSI for population stability',
+      thresholds: 'WARN: KS>0.1, PSI>0.1 | ALERT: KS>0.2, PSI>0.2',
     };
 
     // Try to include smoke components if their JSON files exist
@@ -656,6 +675,24 @@ async function main() {
       });
     }
 
+    // Drift detection failures
+    if (!driftDetection.ok || driftDetection.risk_level === 'high') {
+      breaches.push({
+        name: 'feature-drift',
+        severity: driftDetection.risk_level === 'high' ? 'high' : 'med',
+        details: {
+          type: 'feature_distribution_drift',
+          risk_level: driftDetection.risk_level,
+          features_analyzed: driftDetection.features_analyzed,
+          features_with_alerts: driftDetection.features_with_alerts,
+          features_with_warnings: driftDetection.features_with_warnings,
+          drift_score: driftDetection.drift_score,
+          error: driftDetection.error,
+          impact: driftDetection.risk_level === 'high' ? 'model_performance_degradation' : 'data_quality_concern',
+        },
+      });
+    }
+
     // Build final operational report
     const allSystemsOperational = breaches.length === 0;
     const executionTime = Date.now() - executionStarted;
@@ -698,6 +735,7 @@ async function main() {
       parity_status: enhancedParity.ok ? 'PASS' : 'FAIL',
       health_status: enhancedHealth.ok ? 'PASS' : 'FAIL',
       schema_status: columnCheck.ok ? 'PASS' : 'FAIL',
+      drift_status: driftDetection.ok ? 'PASS' : 'FAIL',
       evidence: {
         parity_details: enhancedParity.details,
         health_details: enhancedHealth.details,
@@ -706,6 +744,14 @@ async function main() {
           missing: columnCheck.missing,
           found: columnCheck.found,
           method: columnCheck.method,
+        },
+        drift_details: {
+          ok: driftDetection.ok,
+          risk_level: driftDetection.risk_level,
+          features_analyzed: driftDetection.features_analyzed,
+          drift_score: driftDetection.drift_score,
+          alerts: driftDetection.features_with_alerts,
+          warnings: driftDetection.features_with_warnings,
         },
       },
     };

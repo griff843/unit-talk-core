@@ -1,0 +1,76 @@
+{
+  "ks_test": {
+    "warn_threshold": 0.1,
+    "alert_threshold": 0.2,
+    "min_p_value": 0.05
+  },
+  "psi": {
+    "warn_threshold": 0.1,
+    "alert_threshold": 0.2,
+    "bins": 10
+  },
+  "baseline": {
+    "days": 30,
+    "min_samples": 100
+  },
+  "features": {
+    "min_frequency": 0.1,
+    "max_features": 50
+  },
+  "environments": {
+    "production": {
+      "ks_test": {
+        "warn_threshold": 0.08,
+        "alert_threshold": 0.15
+      },
+      "psi": {
+        "warn_threshold": 0.08,
+        "alert_threshold": 0.15
+      }
+    },
+    "staging": {
+      "ks_test": {
+        "warn_threshold": 0.12,
+        "alert_threshold": 0.25
+      },
+      "psi": {
+        "warn_threshold": 0.12,
+        "alert_threshold": 0.25
+      }
+    }
+  },
+  "feature_categories": {
+    "critical_features": [
+      "source",
+      "type",
+      "timestamp",
+      "metadata.processingVersion",
+      "metadata.score"
+    ],
+    "business_features": [
+      "data.market",
+      "data.odds",
+      "data.confidence",
+      "payload.team",
+      "payload.league"
+    ],
+    "technical_features": [
+      "payload.length",
+      "metadata.enrichmentFlags.length",
+      "data.processingTime"
+    ]
+  },
+  "alerting": {
+    "enabled": true,
+    "channels": ["dashboard", "logs"],
+    "webhook_url": null,
+    "email_recipients": [],
+    "alert_cooldown_hours": 2
+  },
+  "reporting": {
+    "retention_days": 90,
+    "summary_frequency": "daily",
+    "detailed_reports": true,
+    "trend_analysis": true
+  }
+}

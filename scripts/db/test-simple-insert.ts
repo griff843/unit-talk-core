@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 import '../shared/bootstrapEnv';
-import { getSupabaseAdmin } from '../shared/db';
 import { randomUUID } from 'crypto';
+
+import { getSupabaseAdmin } from '../shared/db';
 
 async function main() {
   try {

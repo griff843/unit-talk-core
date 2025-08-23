@@ -2,8 +2,9 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import postgres from 'postgres';
+
 import { getConfig } from '@unit-talk/config';
+import postgres from 'postgres';
 
 async function main() {
   const cfg = getConfig();

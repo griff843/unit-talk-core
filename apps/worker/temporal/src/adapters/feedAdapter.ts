@@ -4,28 +4,18 @@
  * This adapter is responsible for ingestion and processing steps only
  */
 
+import { createAnonClient } from '@unit-talk/db';
 import type {
   RawFeedData,
   ProcessedFeedItem,
-  FeedProcessingConfig,
-} from '@unit-talk/logic';
+  FeedProcessingConfig} from '@unit-talk/logic';
 import {
-  FeedProcessingResult,
   processFeedData,
   createDefaultFeedConfig,
   deduplicateItems,
   filterByQuality,
   sortByPriority,
 } from '@unit-talk/logic';
-import {
-  DataNormalizer,
-  SportSpecificNormalizer,
-  DataValidator,
-  DataDeduplicator,
-  type NormalizedProp,
-  type ValidationResult,
-} from '@unit-talk/logic';
-import { createAnonClient } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
 
 /**

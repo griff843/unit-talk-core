@@ -2,9 +2,10 @@
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import postgres from 'postgres';
+
 import { getConfig } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
+import postgres from 'postgres';
 
 const OUTPUT_DIR = join(process.cwd(), 'out/acceptance');
 

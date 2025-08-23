@@ -1,0 +1,59 @@
+{
+  "caps": {
+    "nfl": {
+      "per_book": 100000,
+      "per_market": 50000,
+      "per_team": 25000,
+      "per_event": 75000,
+      "notes": "NFL has highest volume capacity - monitor Sunday concentration"
+    },
+    "nba": {
+      "per_book": 75000,
+      "per_market": 40000,
+      "per_team": 20000,
+      "per_event": 60000,
+      "notes": "NBA regular season - watch playoff multipliers"
+    },
+    "mlb": {
+      "per_book": 60000,
+      "per_market": 30000,
+      "per_team": 15000,
+      "per_event": 45000,
+      "notes": "Baseball season - monitor series exposure accumulation"
+    },
+    "nhl": {
+      "per_book": 40000,
+      "per_market": 25000,
+      "per_team": 12000,
+      "per_event": 35000,
+      "notes": "Hockey season - watch playoff intensity"
+    }
+  },
+  "global_limits": {
+    "max_total_exposure": 500000,
+    "max_single_book_percentage": 40,
+    "max_single_market_percentage": 25,
+    "critical_concentration_threshold": 0.8,
+    "notes": "Global limits prevent over-concentration across all leagues"
+  },
+  "breach_actions": {
+    "hard_stop": {
+      "allow_promotion": false,
+      "publish_to_discord": false,
+      "alert_level": "CRITICAL"
+    },
+    "warning_thresholds": {
+      "yellow": 0.7,
+      "red": 0.85,
+      "critical": 1.0
+    },
+    "auto_mute_duration_minutes": 30,
+    "escalation_contacts": ["ops@unit-talk.com", "risk@unit-talk.com"]
+  },
+  "monitoring": {
+    "update_frequency_seconds": 60,
+    "history_retention_days": 30,
+    "dashboard_refresh_seconds": 15,
+    "enable_real_time_alerts": true
+  }
+}

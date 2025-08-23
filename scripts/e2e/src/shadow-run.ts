@@ -31,18 +31,19 @@ import '../../shared/bootstrapEnv';
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { logger } from '@unit-talk/observability';
+
 import { getConfig } from '@unit-talk/config';
+import { logger } from '@unit-talk/observability';
+
+import { executeCanaryCleanup } from '../../db/cleanup-canary';
+import { seedCanaryData } from '../../db/seed-canary';
 import {
   countRawPropsRobust,
   countProcessedRobust,
   countPromotedRobust,
   executePromoterWrite,
   closeConnections,
-  type RobustCountResult,
 } from '../../shared/db';
-import { seedCanaryData } from '../../db/seed-canary';
-import { executeCanaryCleanup } from '../../db/cleanup-canary';
 
 /**
  * Shadow Pipeline Result - Evidence-based validation output

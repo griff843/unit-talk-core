@@ -12,10 +12,10 @@ Behavior:
 - Never print secrets
 */
 
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import fs from 'fs';
 import https from 'https';
+import path from 'path';
 
 const nowIso = new Date().toISOString();
 

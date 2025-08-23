@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
-import { Pool } from 'pg';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
+import { Pool } from 'pg';
 
 interface ShapePatchOutput {
   ok: boolean;

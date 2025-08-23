@@ -2,6 +2,7 @@
 import '../shared/bootstrapEnv';
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
 import { getPgPoolDirect, getSupabaseAdmin, closeConnections } from '../shared/db';
 
 const MIGRATIONS_DIR = join(process.cwd(), 'migrations');

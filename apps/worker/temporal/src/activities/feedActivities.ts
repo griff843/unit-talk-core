@@ -3,6 +3,8 @@
  * Handles ingestion and processing activities (no unified_picks writes)
  */
 
+import { logger } from '@unit-talk/observability';
+
 import type {
   FeedAdapterConfig,
   FeedOperationResult,
@@ -12,7 +14,6 @@ import {
   testFeedAdapter,
   getRawPropsStatistics,
 } from '../adapters/feedAdapter.js';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Execute feed ingestion and processing activity

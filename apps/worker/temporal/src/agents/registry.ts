@@ -3,19 +3,18 @@
  * Provides typed agent definitions with shadow mode support and single-writer enforcement
  */
 
-import * as feedWorkflows from '../workflows/feedWorkflow.js';
-import * as gradingWorkflows from '../workflows/gradingWorkflow.js';
-import * as promoterWorkflows from '../workflows/promoterWorkflow.js';
-import * as analyticsWorkflows from '../workflows/AnalyticsWorkflow.js';
-import * as alertWorkflows from '../workflows/AlertWorkflow.js';
-import * as settlementWorkflows from '../workflows/SettlementWorkflow.js';
-
+import * as alertActivities from '../activities/AlertActivities.js';
+import * as analyticsActivities from '../activities/AnalyticsActivities.js';
 import * as feedActivities from '../activities/feedActivities.js';
 import * as gradingActivities from '../activities/gradingActivities.js';
 import * as promoterActivities from '../activities/promoterActivities.js';
-import * as analyticsActivities from '../activities/AnalyticsActivities.js';
-import * as alertActivities from '../activities/AlertActivities.js';
 import * as settlementActivities from '../activities/SettlementActivities.js';
+import * as alertWorkflows from '../workflows/AlertWorkflow.js';
+import * as analyticsWorkflows from '../workflows/AnalyticsWorkflow.js';
+import * as feedWorkflows from '../workflows/feedWorkflow.js';
+import * as gradingWorkflows from '../workflows/gradingWorkflow.js';
+import * as promoterWorkflows from '../workflows/promoterWorkflow.js';
+import * as settlementWorkflows from '../workflows/SettlementWorkflow.js';
 
 /**
  * Agent capabilities and permissions

@@ -4,6 +4,7 @@
  */
 
 import { proxyActivities } from '@temporalio/workflow';
+
 import type * as activities from '../activities/feedActivities.js';
 
 // Configure activity timeouts and retry policies
@@ -71,6 +72,15 @@ export async function feedWorkflow(
     });
 
     const duration = Date.now() - startTime;
+
+    // Validate a representative workflow output shape without changing behavior
+    try {
+      // eslint-disable-next-line import/no-unresolved
+      const { Workflows, parseOrReport } = await import('@unit-talk/contracts');
+      parseOrReport(Workflows.WorkflowOutput, { status: 'ok', data: result }, 'worker.feed.workflow.output');
+    } catch {
+      /* no-op */
+    }
 
     return {
       ...result,

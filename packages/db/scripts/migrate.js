@@ -6,6 +6,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs_1 = require("fs");
 const path_1 = require("path");
+
 const postgres_1 = __importDefault(require("postgres"));
 const config_1 = require("@unit-talk/config");
 const observability_1 = require("@unit-talk/observability");

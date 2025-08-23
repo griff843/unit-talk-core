@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 
 // Acceptance runner with parity invariant checks
 async function runAcceptance() {

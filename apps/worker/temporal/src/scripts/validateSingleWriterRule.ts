@@ -6,8 +6,9 @@
  * Usage: tsx validateSingleWriterRule.ts
  */
 
-import { AgentRegistry, SINGLE_WRITER_AGENT_ID } from '../agents/registry.js';
 import { logger } from '@unit-talk/observability';
+
+import { AgentRegistry } from '../agents/registry.js';
 
 /**
  * Validation results interface

@@ -1,7 +1,7 @@
-import type { PoolClient } from 'pg';
-import { Pool, Client } from 'pg';
 import { getConfig } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
+import type { PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 /**
  * Promoter-specific database writer using direct PostgreSQL connection

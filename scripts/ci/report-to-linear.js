@@ -2,10 +2,10 @@
    Env: LINEAR_API_KEY, LINEAR_TEAM_ID, GITHUB_RUN_ID, GITHUB_REPOSITORY, GITHUB_SHA
    Optional: BREACH_NAME, FAILING_JOBS
 */
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 const https = require('https');
+const path = require('path');
 
 const nowIso = new Date().toISOString();
 

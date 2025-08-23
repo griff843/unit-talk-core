@@ -4,6 +4,7 @@
  */
 
 import { proxyActivities } from '@temporalio/workflow';
+
 import type * as activities from '../activities/gradingActivities.js';
 
 // Proxy activities with timeout configuration

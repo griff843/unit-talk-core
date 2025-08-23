@@ -4,15 +4,15 @@
  * CRITICAL: Never writes to unified_picks table
  */
 
+import { logger } from '@unit-talk/observability';
+
 import type { SettlementAdapterConfig } from '../adapters/settlementAdapter.js';
 import {
   processSettlements,
   calculatePayouts,
   updateUserBalances,
   testSettlementAdapter,
-  SettlementOperationResult,
 } from '../adapters/settlementAdapter.js';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Process settlements activity

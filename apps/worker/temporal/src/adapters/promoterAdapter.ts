@@ -3,24 +3,22 @@
  * This is the ONLY service authorized to write to unified_picks table
  */
 
-import type { PoolClient } from 'pg';
-import type { RawPropsRow, PromotionConfig } from '@unit-talk/logic';
-import {
-  PromotionResult,
-  selectCandidatesForPromotion,
-  createDefaultPromotionConfig,
-  ensureIdempotency,
-} from '@unit-talk/logic';
+import { config as systemConfig } from '@unit-talk/config';
 import type { UnifiedPickInsert } from '@unit-talk/db';
 import {
   withPromoterClient,
   insertUnifiedPicksBatch,
   countPromotionsInWindow,
   getExistingPromotions,
-} from '@unit-talk/db';
-import { createAnonClient } from '@unit-talk/db';
+ createAnonClient } from '@unit-talk/db';
+import type { RawPropsRow, PromotionConfig } from '@unit-talk/logic';
+import {
+  selectCandidatesForPromotion,
+  createDefaultPromotionConfig,
+  ensureIdempotency,
+} from '@unit-talk/logic';
 import { logger } from '@unit-talk/observability';
-import { config as systemConfig } from '@unit-talk/config';
+import type { PoolClient } from 'pg';
 
 /**
  * Promoter service interface for external configuration

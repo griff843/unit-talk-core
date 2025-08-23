@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 
 async function main() {
   const outDir = path.join(process.cwd(), 'out', 'acceptance');

@@ -1,6 +1,6 @@
 // scripts/shared/db.ts
-import { Pool, PoolClient } from 'pg';
 import { createClient } from '@supabase/supabase-js';
+import { Pool, PoolClient } from 'pg';
 import 'dotenv/config';
 
 let directPool: Pool | null = null;

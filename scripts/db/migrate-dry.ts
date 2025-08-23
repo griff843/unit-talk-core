@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
 import { getConfig } from '@unit-talk/config';
-import { logger } from '@unit-talk/observability';
 import postgres from 'postgres';
 
 async function main() {

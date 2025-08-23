@@ -4,6 +4,8 @@
  */
 
 import { Context } from '@temporalio/activity';
+import { logger } from '@unit-talk/observability';
+
 import type {
   GradingAdapterConfig,
   GradingOperationResult,
@@ -14,7 +16,6 @@ import {
   gradeSinglePick as gradeSinglePickAdapter,
   testGradingConnection as testGradingConnectionAdapter,
 } from '../adapters/gradingAdapter.js';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Activity: Execute grading workflow for batch of promoted picks

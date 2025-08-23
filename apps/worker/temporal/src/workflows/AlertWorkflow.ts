@@ -4,6 +4,7 @@
  */
 
 import { proxyActivities } from '@temporalio/workflow';
+
 import type * as activities from '../activities/AlertActivities.js';
 
 // Configure activity timeouts and retry policies

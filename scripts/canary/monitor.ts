@@ -7,6 +7,7 @@
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
 import { logger } from '@unit-talk/observability';
 
 interface MetricsSnapshot {

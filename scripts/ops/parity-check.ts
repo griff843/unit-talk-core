@@ -17,7 +17,6 @@ import {
   countProcessedRobust,
   countPromotedRobust,
   closeConnections,
-  type RobustCountResult,
 } from '../shared/db';
 
 export interface ParityResult {

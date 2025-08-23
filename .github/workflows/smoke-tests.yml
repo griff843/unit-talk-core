@@ -1,0 +1,356 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**', 'chore/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run smoke tests every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      test_scope:
+        description: 'Scope of smoke tests to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'agents'
+          - 'workflows'
+      shadow_mode:
+        description: 'Run in shadow mode'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  NODE_VERSION: '18'
+  # Force shadow mode and dry run for CI safety
+  SHADOW_MODE: 'true'
+  DRY_RUN: 'true'
+  PUBLISH_TO_DISCORD: 'false'
+  ALLOW_PROMOTION_IN_SHADOW: 'false'
+  # Performance thresholds for CI
+  AGENT_PERF_THRESHOLD_MS: '5000'
+  WORKFLOW_PERF_THRESHOLD_MS: '10000'
+
+jobs:
+  smoke-test-agents:
+    name: Agent Smoke Tests
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_scope == 'all' || github.event.inputs.test_scope == 'agents' || github.event.inputs.test_scope == '' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build packages
+      run: npm run build
+
+    - name: Run agent smoke tests
+      run: npm run smoke:agents
+      timeout-minutes: 10
+      continue-on-error: true
+
+    - name: Upload agent test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: agent-smoke-test-results
+        path: |
+          out/smoke/agents/
+        retention-days: 7
+
+    - name: Comment PR with agent results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const summaryPath = path.join('out', 'smoke', 'agents', 'agents-summary.json');
+            if (fs.existsSync(summaryPath)) {
+              const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+              
+              const status = summary.success ? '✅' : '❌';
+              const body = `## Agent Smoke Tests ${status}
+              
+              - **Total Agents**: ${summary.totalAgents}
+              - **Passed**: ${summary.passedAgents}
+              - **Failed**: ${summary.failedAgents}
+              - **Warnings**: ${summary.warningCount}
+              - **Duration**: ${summary.duration}
+              - **Critical Systems**: ${summary.criticalSystemHealth ? '✅' : '❌'}
+              
+              ${summary.failedAgents.length > 0 ? `**Failed Agents**: ${summary.failedAgents.join(', ')}` : ''}
+              
+              <details>
+              <summary>View detailed results</summary>
+              
+              [Agent Smoke Test Report](../actions/runs/${{ github.run_id }})
+              </details>`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+          } catch (error) {
+            console.log('Could not create agent test comment:', error);
+          }
+
+  smoke-test-workflows:
+    name: Workflow Smoke Tests
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_scope == 'all' || github.event.inputs.test_scope == 'workflows' || github.event.inputs.test_scope == '' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build packages
+      run: npm run build
+
+    - name: Run workflow smoke tests
+      run: npm run smoke:workflows
+      timeout-minutes: 15
+      continue-on-error: true
+
+    - name: Upload workflow test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: workflow-smoke-test-results
+        path: |
+          out/smoke/workflows/
+        retention-days: 7
+
+    - name: Comment PR with workflow results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const summaryPath = path.join('out', 'smoke', 'workflows', 'workflows-summary.json');
+            if (fs.existsSync(summaryPath)) {
+              const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+              
+              const status = summary.success ? '✅' : '❌';
+              const body = `## Workflow Smoke Tests ${status}
+              
+              - **Total Workflows**: ${summary.totalWorkflows}
+              - **Passed**: ${summary.passedWorkflows}
+              - **Failed**: ${summary.failedWorkflows}
+              - **Warnings**: ${summary.warningCount}
+              - **Duration**: ${summary.duration}
+              - **Coverage**: ${summary.workflowCoverage}
+              - **Critical Systems**: ${summary.criticalSystemHealth ? '✅' : '❌'}
+              
+              ${summary.failedWorkflows.length > 0 ? `**Failed Workflows**: ${summary.failedWorkflows.join(', ')}` : ''}
+              
+              <details>
+              <summary>View detailed results</summary>
+              
+              [Workflow Smoke Test Report](../actions/runs/${{ github.run_id }})
+              </details>`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+          } catch (error) {
+            console.log('Could not create workflow test comment:', error);
+          }
+
+  smoke-test-comprehensive:
+    name: Comprehensive Smoke Test Suite
+    runs-on: ubuntu-latest
+    needs: [smoke-test-agents, smoke-test-workflows]
+    if: always() && (${{ github.event.inputs.test_scope == 'all' || github.event.inputs.test_scope == '' }})
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build packages
+      run: npm run build
+
+    - name: Download agent test results
+      uses: actions/download-artifact@v4
+      with:
+        name: agent-smoke-test-results
+        path: out/smoke/agents/
+      continue-on-error: true
+
+    - name: Download workflow test results
+      uses: actions/download-artifact@v4
+      with:
+        name: workflow-smoke-test-results
+        path: out/smoke/workflows/
+      continue-on-error: true
+
+    - name: Generate combined summary
+      run: npm run smoke:summary
+      continue-on-error: true
+
+    - name: Upload combined results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: comprehensive-smoke-test-results
+        path: |
+          out/smoke/smoke-summary.json
+          out/smoke/smoke-dashboard.json
+        retention-days: 30
+
+    - name: Comment PR with comprehensive results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const summaryPath = path.join('out', 'smoke', 'smoke-summary.json');
+            if (fs.existsSync(summaryPath)) {
+              const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+              
+              const status = summary.overallSuccess ? '✅' : '❌';
+              const healthScore = Math.round(
+                ((summary.agents.passedTests + summary.workflows.passedTests) / 
+                 (summary.agents.totalTests + summary.workflows.totalTests)) * 100
+              );
+              
+              const body = `## 🧪 Comprehensive Smoke Test Results ${status}
+              
+              ### Summary
+              - **Overall Success**: ${summary.overallSuccess ? '✅' : '❌'}
+              - **Health Score**: ${healthScore}%
+              - **Environment**: ${summary.environment.shadowMode ? 'SHADOW' : 'LIVE'} mode
+              - **Platform**: ${summary.environment.platform} (Node ${summary.environment.nodeVersion})
+              
+              ### Agent Tests
+              - **Passed/Total**: ${summary.agents.passedTests}/${summary.agents.totalTests}
+              - **Duration**: ${summary.agents.duration}
+              - **Critical Health**: ${summary.agents.criticalAgentHealth ? '✅' : '❌'}
+              
+              ### Workflow Tests
+              - **Passed/Total**: ${summary.workflows.passedTests}/${summary.workflows.totalTests}
+              - **Coverage**: ${summary.workflows.workflowCoverage}
+              - **Duration**: ${summary.workflows.duration}
+              - **Critical Health**: ${summary.workflows.criticalWorkflowHealth ? '✅' : '❌'}
+              
+              ### System Health
+              - **Overall Health**: ${summary.systemHealth.overallHealth ? '✅' : '❌'}
+              - **Critical Systems Online**: ${summary.systemHealth.criticalSystemsOnline ? '✅' : '❌'}
+              - **Shadow Mode Compliant**: ${summary.systemHealth.shadowModeCompliant ? '✅' : '❌'}
+              - **Performance Within Limits**: ${summary.systemHealth.performanceWithinLimits ? '✅' : '❌'}
+              
+              ${summary.recommendations.length > 0 ? `### 💡 Recommendations\n${summary.recommendations.map(r => `- ${r}`).join('\n')}\n` : ''}
+              
+              ${summary.errors.length > 0 ? `### 🚨 Errors\n${summary.errors.slice(0, 5).map(e => `- ${e}`).join('\n')}\n${summary.errors.length > 5 ? `... and ${summary.errors.length - 5} more errors` : ''}` : ''}
+              
+              <details>
+              <summary>View detailed reports</summary>
+              
+              - [Agent Smoke Test Report](../actions/runs/${{ github.run_id }})
+              - [Workflow Smoke Test Report](../actions/runs/${{ github.run_id }})
+              - [Comprehensive Summary](../actions/runs/${{ github.run_id }})
+              </details>`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+          } catch (error) {
+            console.log('Could not create comprehensive test comment:', error);
+          }
+
+    - name: Set job status
+      run: |
+        if [ -f "out/smoke/smoke-summary.json" ]; then
+          SUCCESS=$(jq -r '.overallSuccess' out/smoke/smoke-summary.json)
+          if [ "$SUCCESS" = "true" ]; then
+            echo "✅ All smoke tests passed!"
+            exit 0
+          else
+            echo "❌ Some smoke tests failed!"
+            exit 1
+          fi
+        else
+          echo "⚠️  Could not determine smoke test status"
+          exit 1
+        fi
+
+  # Non-blocking validation job for dashboard integration
+  smoke-test-integration:
+    name: Dashboard Integration
+    runs-on: ubuntu-latest
+    needs: [smoke-test-comprehensive]
+    if: always()
+    
+    steps:
+    - name: Download comprehensive results
+      uses: actions/download-artifact@v4
+      with:
+        name: comprehensive-smoke-test-results
+        path: out/smoke/
+      continue-on-error: true
+
+    - name: Update dashboard
+      run: |
+        echo "🔄 Would update monitoring dashboard with smoke test results"
+        if [ -f "out/smoke/smoke-dashboard.json" ]; then
+          echo "Dashboard data available:"
+          cat out/smoke/smoke-dashboard.json | jq '.metrics'
+        fi
+      continue-on-error: true
+
+    - name: Notify monitoring system
+      run: |
+        echo "📡 Would send smoke test metrics to monitoring system"
+        echo "Status: Non-blocking validation completed"
+      continue-on-error: true

@@ -8,7 +8,6 @@
  */
 
 import { StandaloneMemoryCoordinationAgent } from './memory-standalone-demo';
-import { z } from 'zod';
 
 // Standalone logger for demo
 const createLogger = (name: string) => ({

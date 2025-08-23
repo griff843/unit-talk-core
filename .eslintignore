@@ -8,4 +8,10 @@ out/
 **/generated/**
 **/migrations/**
 **/__snapshots__/**
+# No-Touch list exclusions for lint sweep
+scripts/ops/ops-all.ts
+scripts/db/verify-shape.ts
+scripts/db/verify-session.ts
+apps/worker/package.json
+apps/worker/src/worker.ts
 

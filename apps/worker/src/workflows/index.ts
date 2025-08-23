@@ -1,4 +1,5 @@
 import { proxyActivities } from '@temporalio/workflow';
+
 import type { activities } from '../activities/index.js';
 
 // Create activity proxies

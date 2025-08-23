@@ -6,8 +6,9 @@
  * and cross-session continuity.
  */
 
-import { MemoryCoordinationService } from '../services/MemoryCoordinationService';
 import { createLogger } from '@unit-talk/observability';
+
+import { MemoryCoordinationService } from '../services/MemoryCoordinationService';
 
 const logger = createLogger('memory-integration-examples');
 

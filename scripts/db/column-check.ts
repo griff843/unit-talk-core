@@ -18,9 +18,10 @@ import '../shared/bootstrapEnv';
 
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { createAdminClient } from '@unit-talk/db';
-import { getPromoterClient, getPromoterPool } from '@unit-talk/db';
+
+import { getPromoterPool } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
+
 import { getPgPoolDirect } from '../shared/db';
 
 interface ColumnCheckResult {

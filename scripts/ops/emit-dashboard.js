@@ -3,9 +3,59 @@
 const fs = require('fs');
 const path = require('path');
 
+// Elite Dashboard Integration
+const { spawn } = require('child_process');
+const { platform } = require('os');
+
+/**
+ * Execute elite dashboard generation with enhanced monitoring
+ */
+async function generateEliteDashboard() {
+  return new Promise((resolve, reject) => {
+    const isWindows = platform() === 'win32';
+    const scriptPath = path.join(__dirname, 'elite-dashboard-aggregator.ts');
+    
+    console.log('🚀 Generating elite dashboard with comprehensive monitoring...');
+    
+    const child = spawn('tsx', [scriptPath, 'aggregate'], {
+      stdio: 'inherit',
+      shell: isWindows
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Elite dashboard generated successfully');
+        resolve();
+      } else {
+        console.warn('⚠️  Elite dashboard generation failed, falling back to basic dashboard');
+        resolve(); // Don't fail the entire process
+      }
+    });
+
+    child.on('error', (error) => {
+      console.warn('⚠️  Elite dashboard not available, using basic dashboard:', error.message);
+      resolve(); // Don't fail the entire process
+    });
+  });
+}
+
 // Emit dashboard JSON with current system state
 async function emitDashboard() {
   console.log('📊 Generating dashboard...');
+
+  // Try to generate elite dashboard first
+  try {
+    await generateEliteDashboard();
+    
+    // Check if elite dashboard was generated successfully
+    const eliteDashboardPath = 'out/ops/elite-dashboard.json';
+    if (fs.existsSync(eliteDashboardPath)) {
+      console.log('🎯 Elite dashboard with comprehensive monitoring is available');
+      console.log('📊 Legacy dashboard will be maintained for backwards compatibility');
+    }
+  } catch (error) {
+    console.warn('⚠️  Elite dashboard generation failed:', error.message);
+  }
 
   const dashboard = {
     timestamp: new Date().toISOString(),

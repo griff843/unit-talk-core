@@ -3,6 +3,9 @@
  * These activities handle the actual I/O operations
  */
 
+import { checkPromoterHealth } from '@unit-talk/db';
+import { logger } from '@unit-talk/observability';
+
 import type {
   PromoterConfig,
   PromoterOperationResult,
@@ -11,8 +14,6 @@ import {
   executePromoterWorkflow,
   testPromoterConnection,
 } from '../adapters/promoterAdapter.js';
-import { checkPromoterHealth } from '@unit-talk/db';
-import { logger } from '@unit-talk/observability';
 
 /**
  * Execute promotion activity

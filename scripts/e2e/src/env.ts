@@ -3,6 +3,7 @@ import '../../shared/bootstrapEnv';
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+
 import { getConfig } from '@unit-talk/config';
 import { logger } from '@unit-talk/observability';
 

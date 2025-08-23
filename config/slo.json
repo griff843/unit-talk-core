@@ -1,0 +1,104 @@
+{
+  "version": "1.0.0",
+  "description": "Service Level Objectives configuration for Unit Talk pipeline latency monitoring",
+  "updated_at": "2025-01-08T00:00:00Z",
+  "slo_targets": {
+    "ingest_to_processed_latency": {
+      "description": "Time from raw_props.inserted_at to raw_props.processed_at",
+      "unit": "seconds",
+      "targets": {
+        "p50": 120,
+        "p95": 300,
+        "p99": 600
+      },
+      "breach_thresholds": {
+        "warning": 0.1,
+        "critical": 0.05
+      },
+      "measurement_window": "5m",
+      "burn_rate_windows": {
+        "short": "5m",
+        "long": "1h"
+      }
+    },
+    "processed_to_promoted_latency": {
+      "description": "Time from raw_props.processed_at to unified_picks.promoted_at",
+      "unit": "seconds",
+      "targets": {
+        "p50": 60,
+        "p95": 180,
+        "p99": 300
+      },
+      "breach_thresholds": {
+        "warning": 0.1,
+        "critical": 0.05
+      },
+      "measurement_window": "5m",
+      "burn_rate_windows": {
+        "short": "5m",
+        "long": "1h"
+      }
+    },
+    "end_to_end_latency": {
+      "description": "Complete pipeline time from raw_props.inserted_at to unified_picks.promoted_at",
+      "unit": "seconds",
+      "targets": {
+        "p50": 180,
+        "p95": 480,
+        "p99": 900
+      },
+      "breach_thresholds": {
+        "warning": 0.1,
+        "critical": 0.05
+      },
+      "measurement_window": "5m",
+      "burn_rate_windows": {
+        "short": "5m",
+        "long": "1h"
+      }
+    }
+  },
+  "alerting_config": {
+    "burn_rate_alerts": {
+      "fast_burn": {
+        "description": "Alert when error budget burns too quickly",
+        "short_window": "5m",
+        "long_window": "1h",
+        "short_burn_rate": 14.4,
+        "long_burn_rate": 6
+      },
+      "slow_burn": {
+        "description": "Alert when error budget burns slowly but consistently",
+        "short_window": "30m",
+        "long_window": "6h",
+        "short_burn_rate": 6,
+        "long_burn_rate": 1
+      }
+    },
+    "notification_channels": {
+      "warning": ["slack", "email"],
+      "critical": ["slack", "email", "pagerduty"]
+    }
+  },
+  "error_budget": {
+    "description": "Monthly error budget calculation",
+    "availability_target": 0.995,
+    "budget_period": "30d",
+    "calculation_method": "time_based"
+  },
+  "dashboard_config": {
+    "refresh_interval": "30s",
+    "display_windows": ["1h", "6h", "24h", "7d", "30d"],
+    "default_window": "24h",
+    "visual_thresholds": {
+      "green": 0.95,
+      "yellow": 0.90,
+      "red": 0.85
+    }
+  },
+  "data_retention": {
+    "raw_measurements": "7d",
+    "aggregated_hourly": "30d",
+    "aggregated_daily": "1y"
+  }
+}

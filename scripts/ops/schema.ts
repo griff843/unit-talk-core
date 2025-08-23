@@ -63,6 +63,17 @@ export const Components = z.object({
       fallback_reason: z.string().optional(),
     })
     .optional(),
+  drift: z
+    .object({
+      ok: z.boolean(),
+      risk_level: z.enum(['low', 'medium', 'high']),
+      features_analyzed: z.number().int().nonnegative(),
+      features_with_alerts: z.number().int().nonnegative().optional(),
+      features_with_warnings: z.number().int().nonnegative().optional(),
+      drift_score: z.number().min(0).max(1),
+      error: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const OpsReport = z.object({

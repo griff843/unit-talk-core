@@ -11,6 +11,13 @@ module.exports = {
   ],
   parser: '@typescript-eslint/parser',
   plugins: ['@typescript-eslint', 'import', 'unused-imports'],
+  env: { node: true, es2022: true },
+  settings: {
+    'import/resolver': {
+      typescript: { project: ['./tsconfig.json'] },
+      node: { extensions: ['.js', '.ts', '.tsx', '.jsx', '.mjs', '.cjs'] },
+    },
+  },
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',

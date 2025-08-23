@@ -1,5 +1,5 @@
-import { Router } from 'express';
 import { logger } from '@unit-talk/observability';
+import { Router } from 'express';
 
 const router = Router();
 
