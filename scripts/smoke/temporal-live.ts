@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import 'dotenv/config';
+import '../shared/bootstrapEnv';
 import fs from 'fs';
 import path from 'path';
 import type { WorkflowService } from '@temporalio/client';
@@ -7,7 +7,7 @@ import { Connection } from '@temporalio/client';
 
 async function main() {
   const shadow = process.env.SHADOW_MODE !== 'false';
-  const out: any = {
+  const out: { ok: boolean; timestamp: string; live: true; shadow: boolean; endpoint?: string; taskQueue?: string; pollers?: number | null; error?: string; note?: string } = {
     ok: true,
     timestamp: new Date().toISOString(),
     live: true,

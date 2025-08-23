@@ -1,30 +1,39 @@
 #!/usr/bin/env tsx
 import './bootstrapEnv';
 
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { createClient } from '@supabase/supabase-js';
 
 /**
  * @fileoverview Shared DB Helpers for Unit Talk Core
- * @version 1.0.0
+ * @version 2.0.0
  * @author Unit Talk E2E Validation Team
  *
- * Provides centralized database access with fallback strategies:
- * - Primary: Direct PostgreSQL via pg.Pool using DATABASE_URL
+ * Provides centralized database access with RLS session management:
+ * - Primary: Direct PostgreSQL via pg.Pool using DATABASE_URL with session vars
  * - Fallback: Supabase service role client with service key
+ * - Supabase anon client for read-only operations
+ *
+ * Features:
+ * - withSession wrapper for RLS-aware operations
+ * - Single source of truth for DB connections
+ * - Automatic session variable configuration
+ * - Support for APP_ROLE_FOR_TASK and APP_TENANT_ID
  *
  * All helpers throw informative errors with client type annotation.
- * Used by: shadow-run.ts, parity-check.ts, canary scripts
+ * Used by: shadow-run.ts, parity-check.ts, canary scripts, migration scripts
  */
 
 let pgPool: Pool | null = null;
 let supabaseService: ReturnType<typeof createClient> | null = null;
+let supabaseAnon: ReturnType<typeof createClient> | null = null;
 
 /**
  * Get PostgreSQL Pool connection using DATABASE_URL
  * Preferred for direct DB operations with full access
+ * @returns Singleton pg.Pool instance
  */
-export function getPg(): Pool {
+export function getPgPool(): Pool {
   if (!pgPool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
@@ -44,7 +53,7 @@ export function getPg(): Pool {
     });
 
     // Handle pool errors
-    pgPool.on('error', (err, client) => {
+    pgPool.on('error', (err: unknown) => {
       console.error('Unexpected error on idle pg client', err);
     });
   }
@@ -53,17 +62,49 @@ export function getPg(): Pool {
 }
 
 /**
- * Get Supabase service role client with full database access
- * Used as fallback when pg.Pool fails or for Supabase-specific operations
+ * Execute a function with proper RLS session configuration
+ * Sets app.role and app.tenant_id for Row Level Security
+ * @param fn Function to execute with configured client
+ * @returns Result of the function
  */
-export function getSupaService() {
+export async function withSession<T>(
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const pool = getPgPool();
+  const client = await pool.connect();
+  
+  try {
+    // Set session variables for RLS
+    const appRole = process.env.APP_ROLE_FOR_TASK || 'promoter';
+    const tenantId = process.env.APP_TENANT_ID || 'public';
+    
+    // Use set_config to set session variables
+    await client.query('SELECT set_config($1, $2, $3)', ['app.role', appRole, true]);
+    await client.query('SELECT set_config($1, $2, $3)', ['app.tenant_id', tenantId, true]);
+    
+    // Execute the function with configured client
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}
+
+// Keep legacy name for backward compatibility
+export const getPg = getPgPool;
+
+/**
+ * Get Supabase service role client with full database access (admin)
+ * Used as fallback when pg.Pool fails or for Supabase-specific operations
+ * @returns Supabase client with service role permissions
+ */
+export function getSupabaseAdmin() {
   if (!supabaseService) {
     const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
       throw new Error(
-        'SUPABASE_URL and SUPABASE_SERVICE_KEY are required for service client'
+        'SUPABASE_URL and SUPABASE_SERVICE_KEY/SUPABASE_SERVICE_ROLE_KEY are required for service client'
       );
     }
 
@@ -72,11 +113,47 @@ export function getSupaService() {
         autoRefreshToken: false,
         persistSession: false,
       },
+      db: {
+        schema: 'public'
+      }
     });
   }
 
-  return supabaseService.schema('public');
+  return supabaseService;
 }
+
+/**
+ * Get Supabase anon client for read-only operations
+ * Uses anon key with limited permissions
+ * @returns Supabase client with anon permissions
+ */
+export function getSupabaseAnon() {
+  if (!supabaseAnon) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !anonKey) {
+      throw new Error(
+        'SUPABASE_URL and SUPABASE_ANON_KEY are required for anon client'
+      );
+    }
+
+    supabaseAnon = createClient(supabaseUrl, anonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      db: {
+        schema: 'public'
+      }
+    });
+  }
+
+  return supabaseAnon;
+}
+
+// Keep legacy name for backward compatibility
+export const getSupaService = getSupabaseAdmin;
 
 /**
  * Count raw_props within a time window (in minutes)
@@ -88,19 +165,20 @@ export async function countRawProps(
   const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
 
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-    const query = `
-      SELECT COUNT(*) as count 
-      FROM public.raw_props 
-      WHERE inserted_at >= $1
-    `;
-    const result = await pool.query(query, [windowStart.toISOString()]);
-    return parseInt(result.rows[0].count, 10);
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
+      const query = `
+        SELECT COUNT(*) as count 
+        FROM public.raw_props 
+        WHERE inserted_at >= $1
+      `;
+      const result = await client.query(query, [windowStart.toISOString()]);
+      return parseInt(result.rows[0].count, 10);
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
       const { count, error } = await supabase
         .from('raw_props')
         .select('*', { count: 'exact', head: true })
@@ -137,20 +215,21 @@ export async function countProcessed(
   const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
 
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-    const query = `
-      SELECT COUNT(*) as count 
-      FROM public.raw_props 
-      WHERE inserted_at >= $1 
-        AND processed_at IS NOT NULL
-    `;
-    const result = await pool.query(query, [windowStart.toISOString()]);
-    return parseInt(result.rows[0].count, 10);
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
+      const query = `
+        SELECT COUNT(*) as count 
+        FROM public.raw_props 
+        WHERE inserted_at >= $1 
+          AND processed_at IS NOT NULL
+      `;
+      const result = await client.query(query, [windowStart.toISOString()]);
+      return parseInt(result.rows[0].count, 10);
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
       const { count, error } = await supabase
         .from('raw_props')
         .select('*', { count: 'exact', head: true })
@@ -188,19 +267,20 @@ export async function countPromoted(
   const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
 
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-    const query = `
-      SELECT COUNT(*) as count 
-      FROM public.unified_picks 
-      WHERE promoted_at >= $1
-    `;
-    const result = await pool.query(query, [windowStart.toISOString()]);
-    return parseInt(result.rows[0].count, 10);
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
+      const query = `
+        SELECT COUNT(*) as count 
+        FROM public.unified_picks 
+        WHERE promoted_at >= $1
+      `;
+      const result = await client.query(query, [windowStart.toISOString()]);
+      return parseInt(result.rows[0].count, 10);
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
       const { count, error } = await supabase
         .from('unified_picks')
         .select('*', { count: 'exact', head: true })
@@ -237,30 +317,36 @@ export async function seedCanary(canaryId?: string): Promise<string> {
     `shadow-canary-${new Date().toISOString().slice(0, 16).replace(/[:-]/g, '')}`;
 
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-    const query = `
-      INSERT INTO public.raw_props (id, inserted_at, payload)
-      VALUES ($1, NOW(), $2)
-      ON CONFLICT (id) DO UPDATE SET 
-        inserted_at = NOW(),
-        payload = EXCLUDED.payload
-      RETURNING id
-    `;
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
+      const query = `
+        INSERT INTO public.raw_props (id, data, type, source, is_canary)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (id) DO UPDATE SET 
+          data = EXCLUDED.data
+        RETURNING id
+      `;
 
-    const payload = {
-      type: 'shadow_canary',
-      timestamp: new Date().toISOString(),
-      source: 'e2e_validation',
-      shadow_mode: true,
-    };
+      const payload = {
+        type: 'shadow_canary',
+        timestamp: new Date().toISOString(),
+        source: 'e2e_validation',
+        shadow_mode: true,
+      };
 
-    const result = await pool.query(query, [id, JSON.stringify(payload)]);
-    return result.rows[0].id;
+      const result = await client.query(query, [
+        id, 
+        JSON.stringify(payload),
+        'canary_test',
+        'acceptance',
+        true
+      ]);
+      return result.rows[0].id;
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
 
       const payload = {
         type: 'shadow_canary',
@@ -274,8 +360,10 @@ export async function seedCanary(canaryId?: string): Promise<string> {
         .upsert([
           {
             id,
-            inserted_at: new Date().toISOString(),
-            payload,
+            data: payload,
+            type: 'canary_test',
+            source: 'acceptance',
+            is_canary: true,
           },
         ])
         .select('id')
@@ -310,41 +398,37 @@ export async function cleanupCanary(
   canaryId: string
 ): Promise<{ rawDeleted: number; unifiedDeleted: number }> {
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-
-    const client = await pool.connect();
-    try {
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
       await client.query('BEGIN');
+      try {
+        // Delete from unified_picks first (foreign key constraint)
+        const unifiedResult = await client.query(
+          'DELETE FROM public.unified_picks WHERE raw_id = $1',
+          [canaryId]
+        );
 
-      // Delete from unified_picks first (foreign key constraint)
-      const unifiedResult = await client.query(
-        'DELETE FROM public.unified_picks WHERE raw_id = $1',
-        [canaryId]
-      );
+        // Delete from raw_props
+        const rawResult = await client.query(
+          'DELETE FROM public.raw_props WHERE id = $1',
+          [canaryId]
+        );
 
-      // Delete from raw_props
-      const rawResult = await client.query(
-        'DELETE FROM public.raw_props WHERE id = $1',
-        [canaryId]
-      );
+        await client.query('COMMIT');
 
-      await client.query('COMMIT');
-
-      return {
-        rawDeleted: rawResult.rowCount || 0,
-        unifiedDeleted: unifiedResult.rowCount || 0,
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+        return {
+          rawDeleted: rawResult.rowCount || 0,
+          unifiedDeleted: unifiedResult.rowCount || 0,
+        };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
 
       // Delete from unified_picks first
       const { error: unifiedError, count: unifiedCount } = await supabase
@@ -392,27 +476,28 @@ export async function cleanupCanary(
  */
 export async function executePromoterWrite(rawId: string): Promise<string> {
   try {
-    // Try pg.Pool first (preferred)
-    const pool = getPg();
-    const query = `
-      INSERT INTO public.unified_picks (raw_id, promoted_at, payload)
-      VALUES ($1, NOW(), $2)
-      RETURNING id
-    `;
+    // Try pg.Pool first with session (preferred)
+    return await withSession(async (client) => {
+      const query = `
+        INSERT INTO public.unified_picks (raw_id, promoted_at, data)
+        VALUES ($1, NOW(), $2)
+        RETURNING id
+      `;
 
-    const payload = {
-      source: 'promoter_workflow',
-      promoted_by: 'shadow_e2e_promoter',
-      timestamp: new Date().toISOString(),
-      shadow_mode: true,
-    };
+      const payload = {
+        source: 'promoter_workflow',
+        promoted_by: 'shadow_e2e_promoter',
+        timestamp: new Date().toISOString(),
+        shadow_mode: true,
+      };
 
-    const result = await pool.query(query, [rawId, JSON.stringify(payload)]);
-    return result.rows[0].id;
+      const result = await client.query(query, [rawId, JSON.stringify(payload)]);
+      return result.rows[0].id;
+    });
   } catch (pgError) {
     try {
-      // Fallback to Supabase service client
-      const supabase = getSupaService();
+      // Fallback to Supabase admin client
+      const supabase = getSupabaseAdmin();
 
       const payload = {
         source: 'promoter_workflow',
@@ -426,7 +511,7 @@ export async function executePromoterWrite(rawId: string): Promise<string> {
         .insert({
           raw_id: rawId,
           promoted_at: new Date().toISOString(),
-          payload,
+          data: payload,
         })
         .select('id')
         .single();

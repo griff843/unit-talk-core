@@ -37,8 +37,9 @@ import '../shared/bootstrapEnv';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import * as path from 'path';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 import * as fs from 'fs';
-import { setTimeout as sleep } from 'timers/promises';
 import { logger } from '@unit-talk/observability';
 import { createAnonClient } from '@unit-talk/db';
 import { getConfig } from '@unit-talk/config';
@@ -46,6 +47,7 @@ import { getConfig } from '@unit-talk/config';
 // Import validation functions
 import { OpsReport as OpsReportSchema } from './schema';
 import type { OpsReport, Breach, Components } from './schema';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { runParityCheck } from './parity-check';
 import { closeConnections } from '../shared/db';
 import { runRlsWatch } from './rls-watch';
@@ -403,7 +405,6 @@ async function main() {
     // Try to include smoke components if their JSON files exist
     try {
       const readJson = (p: string) => {
-        const fs = require('fs');
         return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : null;
       };
       const d = readJson('out/smoke/discord.json');
@@ -429,33 +430,64 @@ async function main() {
             spawnSync(cmd, { shell: true, stdio: 'inherit' });
           run('npm run smoke:temporal:live');
           run('npm run smoke:supabase:live');
-          const fs = require('fs');
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          // fs imported at top; use it directly
           const d1p = 'out/smoke/temporal-live.json';
           const d2p = 'out/smoke/supabase-live.json';
           if (fs.existsSync(d1p)) {
             const d1 = JSON.parse(fs.readFileSync(d1p, 'utf8'));
-            (components as any).temporal = {
-              ok: !!d1.ok,
-              backlog_age_sec:
-                (components as any).temporal?.backlog_age_sec || 0,
-              failures: (components as any).temporal?.failures || 0,
-            };
+            (components as any).temporal = { ok: !!d1.ok, endpoint: d1.endpoint, taskQueue: d1.taskQueue, pollers: d1.pollers ?? null };
           }
           if (fs.existsSync(d2p)) {
             const d2 = JSON.parse(fs.readFileSync(d2p, 'utf8'));
-            (components as any).supabase = { ok: !!d2.ok };
-            (components as any).db = {
-              ok: (components as any).db?.ok ?? !!d2.ok,
-              rls_enabled:
-                (components as any).db?.rls_enabled ?? !!d2.rls_enabled,
-            };
+            (components as any).supabase = { ok: !!d2.ok, endpoint: d2.endpoint };
+            (components as any).db = { ok: (components as any).db?.ok ?? !!d2.ok, rls_enabled: (components as any).db?.rls_enabled ?? !!d2.rls_enabled };
+          }
+
+          // Promote live-check failures to breaches (non-shadow only)
+          try {
+            const tPath = d1p;
+            const sPath = d2p;
+            if (fs.existsSync(tPath)) {
+              const t = JSON.parse(fs.readFileSync(tPath, 'utf8'));
+              if (!t.ok) {
+                breaches.push({
+                  name: 'temporal-live-breach',
+                  severity: 'high',
+                  details: {
+                    endpoint: t.endpoint || process.env.TEMPORAL_SERVER_ADDRESS,
+                    taskQueue: t.taskQueue || process.env.TEMPORAL_TASK_QUEUE,
+                    pollers: t.pollers ?? null,
+                    error: t.error || 'Unknown Temporal live check failure',
+                  },
+                });
+              }
+            }
+            if (fs.existsSync(sPath)) {
+              const s = JSON.parse(fs.readFileSync(sPath, 'utf8'));
+              if (!s.ok) {
+                breaches.push({
+                  name: 'supabase-rls-breach',
+                  severity: 'high',
+                  details: {
+                    table: 'unified_picks',
+                    rls_enabled: s.rls_enabled,
+                    policy_blocks_anon_write: s.policy_blocks_anon_write,
+                    error: s.error || 'Unknown Supabase live policy failure',
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            void e;
           }
         }
-      } catch {
-        /* ignore live smoke errors here; exit codes handled by run() */
+      } catch (e) {
+        void e;
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      void e;
     }
 
     // Enhanced breach detection with detailed evidence
@@ -505,7 +537,9 @@ async function main() {
         path.join(outDir, 'dashboard.json'),
         JSON.stringify(dashboard, null, 2)
       );
-    } catch {}
+    } catch (e) {
+      void e;
+    }
 
     // RLS violations
     if (!rls.ok || (rls.violations && rls.violations > 0)) {
@@ -641,7 +675,9 @@ async function writeReport(report: OpsReport): Promise<void> {
       };
       const dashPath = join(OUTPUT_DIR, 'dashboard.json');
       writeFileSync(dashPath, JSON.stringify(dashboard, null, 2));
-    } catch {}
+    } catch (e) {
+      void e;
+    }
 
     writeFileSync(reportPath, reportContent);
 

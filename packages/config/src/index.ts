@@ -72,6 +72,9 @@ const configSchema = z.object({
   SUPABASE_ANON_KEY: z.string().min(10).max(2048),
 
   SUPABASE_SERVICE_KEY: z.string().min(10).max(2048),
+  
+  // Alternative name for SUPABASE_SERVICE_KEY (backwards compatibility)
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(10).max(2048).optional(),
 
   DB_POOL_MIN: positiveIntSchema.default('2'),
   DB_POOL_MAX: positiveIntSchema.default('10'),
@@ -82,6 +85,10 @@ const configSchema = z.object({
   SHADOW_MODE: booleanSchema.default('true'),
   PUBLISH_TO_DISCORD: booleanSchema.default('false'),
   MAX_ALLOWED_PROMOTES_5MIN: positiveIntSchema.default('20'),
+  
+  // Row Level Security session variables
+  APP_ROLE_FOR_TASK: z.string().default('promoter'),
+  APP_TENANT_ID: z.string().default('public'),
   ENABLE_DEBUG_ROUTES: booleanSchema.default('false'),
   ENABLE_ADMIN_ROUTES: booleanSchema.default('false'),
 
@@ -420,6 +427,10 @@ export const config = {
         url: cfg.SUPABASE_URL,
         anonKey: cfg.SUPABASE_ANON_KEY,
         serviceKey: cfg.SUPABASE_SERVICE_KEY,
+      },
+      rls: {
+        appRole: cfg.APP_ROLE_FOR_TASK,
+        tenantId: cfg.APP_TENANT_ID,
       },
     };
   },

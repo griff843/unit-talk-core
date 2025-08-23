@@ -906,3 +906,29 @@ jobs:
         run: npm ci --include=dev --no-audit --no-fund
       - name: DB migrate dry run
         run: npm run db:migrate:dry
+
+
+  # Job: Post PR Ops Dashboard Comment
+  pr-ops-comment:
+    name: PR Ops Dashboard Comment
+    runs-on: ubuntu-latest
+    needs: [contracts, db-hygiene-dryrun]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install deps (for script runtime)
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Generate ops outputs (shadow)
+        env:
+          SHADOW_MODE: true
+          PUBLISH_TO_DISCORD: false
+        run: npm run ops:all || true
+      - name: Post/Update PR Ops Summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx tsx scripts/ci/comment-ops-summary.ts

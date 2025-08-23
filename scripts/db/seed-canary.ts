@@ -16,7 +16,7 @@ import '../shared/bootstrapEnv';
  * - Returns canary ID and count for tracking
  */
 
-import { seedCanary, closeConnections } from '../shared/db';
+import { getSupabaseAdmin, closeConnections } from '../shared/db';
 
 interface CanaryResult {
   canaryId: string;
@@ -41,11 +41,72 @@ async function seedCanaryData(): Promise<CanaryResult> {
   );
 
   try {
-    for (let i = 0; i < canaryCount; i++) {
-      const canaryId = `${baseCanaryId}-${i.toString().padStart(2, '0')}`;
-      const insertedId = await seedCanary(canaryId);
-      insertedIds.push(insertedId);
-      console.log(`  ✅ Seeded canary: ${insertedId}`);
+    // Use Supabase admin for inserts (no inserted_at conflicts)
+    const supabase = getSupabaseAdmin();
+    
+    // Create all canary rows in batch
+    const canaryRows = Array.from({ length: canaryCount }, (_, i) => ({
+      id: `${baseCanaryId}-${i.toString().padStart(2, '0')}`,
+      data: {
+        canary: true,
+        baseId: baseCanaryId,
+        index: i,
+        timestamp: timestamp,
+        kind: 'shadow_canary'
+      },
+      type: 'canary_test',
+      source: 'acceptance',
+      is_canary: true
+      // Don't include inserted_at - let DB default handle it
+    }));
+
+    console.log(`  📦 Inserting ${canaryRows.length} rows...`);
+    
+    const { data: insertedData, error } = await supabase
+      .from('raw_props')
+      .insert(canaryRows)
+      .select('id');
+      
+    if (error) {
+      // If Supabase insert fails due to cache, retry once
+      console.log(`  ⚠️  Retrying insert due to cache miss: ${error.message}`);
+      const { data: retryData, error: retryError } = await supabase
+        .from('raw_props')
+        .insert(canaryRows)
+        .select('id');
+        
+      if (retryError) {
+        throw new Error(`Supabase insert failed: ${retryError.message}`);
+      }
+      
+      insertedData = retryData;
+    }
+
+    if (!insertedData || insertedData.length === 0) {
+      throw new Error('No data returned from insert operation');
+    }
+
+    insertedIds.push(...insertedData.map(row => row.id));
+    
+    console.log(`  ✅ Successfully inserted ${insertedIds.length} canary rows`);
+
+    // Optionally mark some as processed (simulate processing step)
+    const processedCount = Math.floor(insertedIds.length * 0.8); // 80% processed
+    if (processedCount > 0) {
+      const idsToProcess = insertedIds.slice(0, processedCount);
+      
+      console.log(`  🔄 Marking ${idsToProcess.length} rows as processed...`);
+      
+      const { error: processError } = await supabase
+        .from('raw_props')
+        .update({ processed_at: new Date().toISOString() })
+        .in('id', idsToProcess);
+        
+      if (processError) {
+        console.warn(`  ⚠️  Could not mark as processed: ${processError.message}`);
+      } else {
+        console.log(`  ✅ Marked ${idsToProcess.length} rows as processed`);
+      }
     }
 
     const result: CanaryResult = {
@@ -99,8 +160,8 @@ async function main(): Promise<void> {
   try {
     console.log('🚀 Starting canary data seeding for shadow E2E validation');
 
-    const result = await seedCanaryData();
-
+    const res = await seedCanaryData();
+    void res;
     console.log('\n✅ Canary seeding completed successfully');
     process.exit(0);
   } catch (error) {

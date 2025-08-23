@@ -37,9 +37,7 @@ import {
   countRawProps,
   countProcessed,
   countPromoted,
-  seedCanary,
   executePromoterWrite,
-  cleanupCanary,
   closeConnections,
 } from '../../shared/db';
 import { seedCanaryData } from '../../db/seed-canary';
@@ -564,14 +562,29 @@ async function capturePipelineMetrics(phase: string): Promise<PipelineMetrics> {
     logger.info(`✅ Pipeline metrics captured for ${phase}`, metrics);
     return metrics;
   } catch (error) {
+    // Diagnostics only: enrich error details, log, and rethrow
+    try {
+      const err = error as any;
+      const details: any = (globalThis as any).__shadowErrorDetails || ((globalThis as any).__shadowErrorDetails = {});
+      (details.db_errors || (details.db_errors = [])).push({
+        code: err?.code,
+        message: err?.message || String(err),
+        detail: err?.detail,
+        hint: err?.hint,
+        where: err?.where,
+        stack: err?.stack,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      void e;
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`Failed to capture pipeline metrics for phase: ${phase}`, {
       error: errorMessage,
       phase,
     });
-    throw new Error(
-      `Pipeline metrics capture failed for ${phase}: ${errorMessage}`
-    );
+    throw new Error(`Pipeline metrics capture failed for ${phase}: ${errorMessage}`);
   }
 }
 

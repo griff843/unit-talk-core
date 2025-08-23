@@ -1,0 +1,47 @@
+name: Staging Live Ops
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18.x'
+
+jobs:
+  live-ops:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Run ops:all (live)
+        env:
+          SHADOW_MODE: false
+        run: npm run ops:all || true
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-live-${{ github.run_id }}
+          path: out/**
+      - name: Report to Linear on breach/failure
+        if: ${{ failure() }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          BREACH_NAME: Ops live run failure
+        run: node scripts/ci/report-to-linear.js
+      - name: Comment dashboard on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx tsx scripts/ci/comment-ops-summary.ts
+

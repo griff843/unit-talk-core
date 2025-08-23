@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
-import 'dotenv/config';
+import '../shared/bootstrapEnv';
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 
 async function main() {
   const shadow = process.env.SHADOW_MODE !== 'false';
-  const out: any = {
+  const out: { ok: boolean; timestamp: string; live: true; shadow: boolean; endpoint?: string; tableExists?: boolean; rls_enabled?: boolean; policy_blocks_anon_write?: boolean; error?: string; note?: string } = {
     ok: true,
     timestamp: new Date().toISOString(),
     live: true,
@@ -21,6 +21,7 @@ async function main() {
     const url = process.env.SUPABASE_URL;
     const anon = process.env.SUPABASE_ANON_KEY;
     const service = process.env.SUPABASE_SERVICE_KEY;
+    out.endpoint = url;
     if (!url || !service || !anon) {
       out.ok = false;
       out.error =
