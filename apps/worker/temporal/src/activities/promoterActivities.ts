@@ -31,6 +31,7 @@ export async function executePromotionActivity(
       promoted: result.promoted,
       rejected: result.rejected,
       floodGuardTriggered: result.floodGuardTriggered,
+      shadowModeBlocked: result.shadowModeBlocked,
     });
 
     return result;

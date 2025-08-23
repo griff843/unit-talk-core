@@ -362,6 +362,14 @@ jobs:
           echo "Running E2E shadow tests..."
           npm run e2e:shadow
 
+      - name: Run DB verifiers (non-blocking, shadow-safe)
+        shell: bash
+        run: |
+          export SHADOW_MODE=true
+          npm run db:verify:shape || true
+          npm run db:verify:session || true
+          npm run db:check:columns || true
+
       - name: Collect E2E test results
         if: always()
         run: |
@@ -375,6 +383,17 @@ jobs:
           echo "Stopping background services..."
           [[ -n "$API_PID" ]] && kill $API_PID || echo "API already stopped"
           [[ -n "$WORKER_PID" ]] && kill $WORKER_PID || echo "Worker already stopped"
+
+      - name: Upload DB verifier artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-verification
+          path: |
+            out/db/verify-shape.json
+            out/db/verify-session.json
+            out/db/column-check.json
+          if-no-files-found: ignore
 
       - name: Upload E2E test results
         uses: actions/upload-artifact@v3
@@ -790,7 +809,18 @@ jobs:
           # Test workspace commands
           npm run test --workspace=packages/shared --if-present
 
+          # Test column check script (Windows-safe)
+          npm run db:check:columns || echo "Column check completed (non-blocking)"
+
           echo "✅ Windows compatibility validated"
+
+      - name: Upload Windows column check artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-column-check
+          path: out/db/column-check.json
+          if-no-files-found: ignore
 
   # Job 10: Final Validation & Reporting
   final-validation:

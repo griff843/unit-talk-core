@@ -52,6 +52,7 @@ import { runParityCheck } from './parity-check';
 import { closeConnections } from '../shared/db';
 import { runRlsWatch } from './rls-watch';
 import { runTemporalHealth } from './temporal-health';
+import { checkColumns } from '../db/column-check';
 
 // ============================================================================
 // CONFIGURATION AND CONSTANTS
@@ -332,58 +333,63 @@ async function main() {
 
   try {
     // Execute all operational checks in parallel with enhanced validation
-    const [enhancedParity, enhancedHealth, rls, temporal] = (await Promise.all([
-      withTimeout(
-        runEnhancedParityCheck(),
-        TIMEOUT_MS,
-        'enhanced-parity-check'
-      ),
-      withTimeout(
-        runEnhancedHealthCheck(),
-        TIMEOUT_MS,
-        'enhanced-health-check'
-      ),
-      withTimeout(runRlsWatch(), TIMEOUT_MS, 'rls-watch'),
-      withTimeout(runTemporalHealth(), TIMEOUT_MS, 'temporal-health'),
-    ]).catch(async err => {
-      // Critical execution failure - create high severity breach report
-      const executionTime = Date.now() - executionStarted;
-      const criticalError = err as Error;
+    const [enhancedParity, enhancedHealth, rls, temporal, columnCheck] =
+      (await Promise.all([
+        withTimeout(
+          runEnhancedParityCheck(),
+          TIMEOUT_MS,
+          'enhanced-parity-check'
+        ),
+        withTimeout(
+          runEnhancedHealthCheck(),
+          TIMEOUT_MS,
+          'enhanced-health-check'
+        ),
+        withTimeout(runRlsWatch(), TIMEOUT_MS, 'rls-watch'),
+        withTimeout(runTemporalHealth(), TIMEOUT_MS, 'temporal-health'),
+        withTimeout(checkColumns(), TIMEOUT_MS, 'column-check'),
+      ]).catch(async err => {
+        // Critical execution failure - create high severity breach report
+        const executionTime = Date.now() - executionStarted;
+        const criticalError = err as Error;
 
-      logger.error('💥 Critical operational validation failure', {
-        error: criticalError.message,
-        execution_time_ms: executionTime,
-      });
+        logger.error('💥 Critical operational validation failure', {
+          error: criticalError.message,
+          execution_time_ms: executionTime,
+        });
 
-      const emergencyReport: OpsReport = {
-        ok: false,
-        breaches: [
-          {
-            name: 'ops-execution-error',
-            severity: 'high',
-            details: {
-              message: criticalError.message,
-              stack: criticalError.stack,
-              execution_time_ms: executionTime,
-              timestamp: new Date().toISOString(),
+        const emergencyReport: OpsReport = {
+          ok: false,
+          breaches: [
+            {
+              name: 'ops-execution-error',
+              severity: 'high',
+              details: {
+                message: criticalError.message,
+                stack: criticalError.stack,
+                execution_time_ms: executionTime,
+                timestamp: new Date().toISOString(),
+              },
             },
+          ],
+          runtime_ms: executionTime,
+          timestamp: new Date().toISOString(),
+          components: {
+            parity: { ok: false, details: { error: 'execution_failed' } },
+            rls: { ok: false, violations: -1 },
+            temporal: { ok: false, backlog_age_sec: -1, failures: -1 },
+            schema: { ok: false, missing: [], found: [] },
           },
-        ],
-        runtime_ms: executionTime,
-        timestamp: new Date().toISOString(),
-        components: {
-          parity: { ok: false, details: { error: 'execution_failed' } },
-          rls: { ok: false, violations: -1 },
-          temporal: { ok: false, backlog_age_sec: -1, failures: -1 },
-        },
-      };
+        };
 
-      await writeReport(emergencyReport);
-      console.log(
-        'OPS: ok=false, breaches=[ops-execution-error] - CRITICAL FAILURE'
-      );
-      process.exit(1);
-    })) as any;
+        await writeReport(emergencyReport);
+        console.log(
+          'OPS: ok=false, breaches=[ops-execution-error] - CRITICAL FAILURE'
+        );
+        process.exit(1);
+      })) as any;
+
+    // Column check results are already available from the parallel execution above
 
     // Build comprehensive components report with enhanced data
     const components: Components = {
@@ -400,6 +406,42 @@ async function main() {
         backlog_age_sec: temporal.backlog_age_sec || 0,
         failures: temporal.failures || 0,
       },
+      schema: {
+        ok: columnCheck.ok,
+        missing: columnCheck.missing,
+        found: columnCheck.found,
+        method: columnCheck.method,
+        timestamp: columnCheck.timestamp,
+      },
+      shadow_fallbacks: {
+        processed_fallback: columnCheck.method === 'direct-pg',
+        supabase_available: columnCheck.method === 'supabase',
+        fallback_reason:
+          columnCheck.method === 'direct-pg'
+            ? columnCheck.details?.supabase_fallback_reason ||
+              'supabase_unavailable'
+            : undefined,
+      },
+    };
+
+    // Component notes (informational only)
+    const componentNotes: Record<string, unknown> = {};
+    componentNotes.parity = {
+      sqlUsed:
+        'supabase head:true counts on raw_props/unified_picks over 5min window',
+    };
+    componentNotes.promoted = {
+      sqlUsed: 'promoted_5min via promoted_at >= now()-interval',
+    };
+    componentNotes.schema = {
+      checkMethod: columnCheck.method,
+      requiredColumns: [
+        'raw_props.inserted_at',
+        'raw_props.processed_at',
+        'unified_picks.promoted_at',
+        'unified_picks.raw_id',
+      ],
+      strategy: 'supabase-client with direct-pg fallback',
     };
 
     // Try to include smoke components if their JSON files exist
@@ -437,12 +479,24 @@ async function main() {
           const d2p = 'out/smoke/supabase-live.json';
           if (fs.existsSync(d1p)) {
             const d1 = JSON.parse(fs.readFileSync(d1p, 'utf8'));
-            (components as any).temporal = { ok: !!d1.ok, endpoint: d1.endpoint, taskQueue: d1.taskQueue, pollers: d1.pollers ?? null };
+            (components as any).temporal = {
+              ok: !!d1.ok,
+              endpoint: d1.endpoint,
+              taskQueue: d1.taskQueue,
+              pollers: d1.pollers ?? null,
+            };
           }
           if (fs.existsSync(d2p)) {
             const d2 = JSON.parse(fs.readFileSync(d2p, 'utf8'));
-            (components as any).supabase = { ok: !!d2.ok, endpoint: d2.endpoint };
-            (components as any).db = { ok: (components as any).db?.ok ?? !!d2.ok, rls_enabled: (components as any).db?.rls_enabled ?? !!d2.rls_enabled };
+            (components as any).supabase = {
+              ok: !!d2.ok,
+              endpoint: d2.endpoint,
+            };
+            (components as any).db = {
+              ok: (components as any).db?.ok ?? !!d2.ok,
+              rls_enabled:
+                (components as any).db?.rls_enabled ?? !!d2.rls_enabled,
+            };
           }
 
           // Promote live-check failures to breaches (non-shadow only)
@@ -586,6 +640,22 @@ async function main() {
       });
     }
 
+    // Schema validation failures
+    if (!columnCheck.ok) {
+      breaches.push({
+        name: 'schema-validation',
+        severity: 'high',
+        details: {
+          type: 'missing_required_columns',
+          missing_columns: columnCheck.missing,
+          found_columns: columnCheck.found,
+          check_method: columnCheck.method,
+          error: columnCheck.error,
+          impact: 'data_flow_constraints_violated',
+        },
+      });
+    }
+
     // Build final operational report
     const allSystemsOperational = breaches.length === 0;
     const executionTime = Date.now() - executionStarted;
@@ -596,7 +666,10 @@ async function main() {
       runtime_ms: executionTime,
       timestamp: new Date().toISOString(),
       components,
-    };
+    } as OpsReport & { componentNotes?: Record<string, unknown> };
+
+    // Attach informational notes (non-breaking) for dashboards
+    (report as any).componentNotes = componentNotes;
 
     // Enhanced report validation
     const validationResult = OpsReportSchema.safeParse(report);
@@ -624,9 +697,16 @@ async function main() {
       execution_time_ms: executionTime,
       parity_status: enhancedParity.ok ? 'PASS' : 'FAIL',
       health_status: enhancedHealth.ok ? 'PASS' : 'FAIL',
+      schema_status: columnCheck.ok ? 'PASS' : 'FAIL',
       evidence: {
         parity_details: enhancedParity.details,
         health_details: enhancedHealth.details,
+        schema_details: {
+          ok: columnCheck.ok,
+          missing: columnCheck.missing,
+          found: columnCheck.found,
+          method: columnCheck.method,
+        },
       },
     };
 

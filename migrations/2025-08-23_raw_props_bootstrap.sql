@@ -91,7 +91,16 @@ CREATE INDEX IF NOT EXISTS idx_raw_props_type
   ON public.raw_props(type) 
   WHERE type IS NOT NULL;
 
--- Also ensure unified_picks has the right column name
+-- Ensure unified_picks table exists with proper structure
+CREATE TABLE IF NOT EXISTS public.unified_picks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  raw_id UUID NOT NULL,
+  promoted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  settled_at TIMESTAMPTZ,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- Also ensure unified_picks has the right column name (handle legacy naming)
 DO $$
 BEGIN
   -- If we have 'payload' but not 'data' in unified_picks, rename it
@@ -119,3 +128,14 @@ BEGIN
     ALTER TABLE public.unified_picks ADD COLUMN data JSONB NOT NULL DEFAULT '{}'::jsonb;
   END IF;
 END $$;
+
+-- Create helpful indexes for unified_picks (idempotent)
+CREATE INDEX IF NOT EXISTS idx_unified_picks_promoted_at 
+  ON public.unified_picks(promoted_at);
+
+CREATE INDEX IF NOT EXISTS idx_unified_picks_raw_id 
+  ON public.unified_picks(raw_id);
+
+CREATE INDEX IF NOT EXISTS idx_unified_picks_settled_at 
+  ON public.unified_picks(settled_at) 
+  WHERE settled_at IS NOT NULL;

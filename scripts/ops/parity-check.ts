@@ -13,10 +13,11 @@ import '../shared/bootstrapEnv';
  */
 
 import {
-  countRawProps,
-  countProcessed,
-  countPromoted,
+  countRawPropsRobust,
+  countProcessedRobust,
+  countPromotedRobust,
   closeConnections,
+  type RobustCountResult,
 } from '../shared/db';
 
 export interface ParityResult {
@@ -38,6 +39,11 @@ interface ParityDetails {
   };
   validation_timestamp: string;
   phase: string;
+  strategies: {
+    raw: string;
+    processed: string;
+    promoted: string;
+  };
 }
 
 export async function runParityCheck(
@@ -49,10 +55,22 @@ export async function runParityCheck(
   try {
     console.log(`🔍 Running parity check (${windowMinutes}-minute window)`);
 
-    // Get counts using shared DB helpers with fallback strategies
-    const rawCount = await countRawProps(windowMinutes);
-    const processedCount = await countProcessed(windowMinutes);
-    const promotedCount = await countPromoted(windowMinutes);
+    // Get counts using robust DB helpers with clear error reporting
+    const rawResult = await countRawPropsRobust(windowMinutes);
+    const processedResult = await countProcessedRobust(windowMinutes);
+    const promotedResult = await countPromotedRobust(windowMinutes);
+    
+    const rawCount = rawResult.count;
+    const processedCount = processedResult.count;
+    const promotedCount = promotedResult.count;
+    
+    // Log any connection warnings with strategy information
+    if (rawResult.error) console.log(`⚠️  Raw count (${rawResult.source}): ${rawResult.error}`);
+    if (processedResult.error) console.log(`⚠️  Processed count (${processedResult.source}): ${processedResult.error}`);
+    if (promotedResult.error) console.log(`⚠️  Promoted count (${promotedResult.source}): ${promotedResult.error}`);
+    
+    // Log strategies used for transparency
+    console.log(`📊 Count strategies - Raw: ${rawResult.source}, Processed: ${processedResult.source}, Promoted: ${promotedResult.source}`);
 
     // Validate parity constraints
     const rawGeProcessed = rawCount >= processedCount;
@@ -71,6 +89,11 @@ export async function runParityCheck(
       },
       validation_timestamp: timestamp,
       phase,
+      strategies: {
+        raw: rawResult.source,
+        processed: processedResult.source,
+        promoted: promotedResult.source
+      }
     };
 
     const result: ParityResult = {
@@ -85,6 +108,11 @@ export async function runParityCheck(
         processed: processedCount,
         promoted: promotedCount,
         phase,
+        strategies: {
+          raw: rawResult.source,
+          processed: processedResult.source,
+          promoted: promotedResult.source
+        }
       });
     } else {
       console.log('❌ Parity check failed', {
@@ -96,6 +124,11 @@ export async function runParityCheck(
           processed_ge_promoted: !processedGePromoted,
         },
         phase,
+        strategies: {
+          raw: rawResult.source,
+          processed: processedResult.source,
+          promoted: promotedResult.source
+        }
       });
     }
 

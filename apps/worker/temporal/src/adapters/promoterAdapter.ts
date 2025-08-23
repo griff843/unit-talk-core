@@ -20,6 +20,7 @@ import {
 } from '@unit-talk/db';
 import { createAnonClient } from '@unit-talk/db';
 import { logger } from '@unit-talk/observability';
+import { config as systemConfig } from '@unit-talk/config';
 
 /**
  * Promoter service interface for external configuration
@@ -40,6 +41,7 @@ export interface PromoterOperationResult {
   promoted: number;
   rejected: number;
   floodGuardTriggered: boolean;
+  shadowModeBlocked: boolean;
   error?: string;
   promotedIds?: string[];
   metadata: {
@@ -86,6 +88,7 @@ export async function executePromoterWorkflow(
         promoted: 0,
         rejected: 0,
         floodGuardTriggered: false,
+        shadowModeBlocked: false,
         metadata: {
           totalCandidates: 0,
           windowStart: startTime.toISOString(),
@@ -110,6 +113,7 @@ export async function executePromoterWorkflow(
       promoted: result.promoted,
       rejected: result.rejected,
       floodGuardTriggered: result.floodGuardTriggered,
+      shadowModeBlocked: result.shadowModeBlocked,
       duration: Date.now() - startTime.getTime(),
     });
 
@@ -126,6 +130,7 @@ export async function executePromoterWorkflow(
       promoted: 0,
       rejected: 0,
       floodGuardTriggered: false,
+      shadowModeBlocked: false,
       error: errorMessage,
       metadata: {
         totalCandidates: 0,
@@ -244,9 +249,26 @@ async function executePromotionWithClient(
     });
 
     let promotedIds: string[] = [];
+    let shadowModeBlocked = false;
 
-    // Step 5: Execute writes (SINGLE WRITER PATTERN)
-    if (finalCandidates.length > 0 && !dryRun) {
+    // Step 5: Shadow mode gate - check if promotion is allowed
+    const { shadowMode, allowPromotionInShadow } = systemConfig.features;
+    const shouldBlockPromotion = shadowMode && !allowPromotionInShadow;
+
+    if (shouldBlockPromotion && finalCandidates.length > 0) {
+      shadowModeBlocked = true;
+      logger.info('SHADOW MODE: Blocking promotion to unified_picks', {
+        candidateCount: finalCandidates.length,
+        shadowMode,
+        allowPromotionInShadow,
+        message: 'Set ALLOW_PROMOTION_IN_SHADOW=true to enable DB writes in shadow mode'
+      });
+      
+      // In shadow mode with no promotion allowed, we simulate the promotion
+      promotedIds = finalCandidates.map(c => `shadow-blocked-${c.rawId}`);
+    }
+    // Step 6: Execute writes (SINGLE WRITER PATTERN)
+    else if (finalCandidates.length > 0 && !dryRun) {
       const picksToInsert: UnifiedPickInsert[] = finalCandidates.map(
         candidate => ({
           raw_id: candidate.rawId,
@@ -264,6 +286,8 @@ async function executePromotionWithClient(
       logger.info('Unified picks inserted', {
         count: insertedPicks.length,
         ids: promotedIds,
+        shadowMode,
+        allowPromotionInShadow,
       });
     } else if (dryRun) {
       logger.info('DRY RUN - Would have promoted', {
@@ -274,9 +298,10 @@ async function executePromotionWithClient(
 
     return {
       success: true,
-      promoted: finalCandidates.length,
+      promoted: shadowModeBlocked ? 0 : finalCandidates.length,
       rejected: promotionResult.rejectedCandidates.length,
       floodGuardTriggered: promotionResult.floodGuardTriggered,
+      shadowModeBlocked,
       promotedIds,
       metadata: {
         totalCandidates: candidates.length,

@@ -47,6 +47,22 @@ export const Components = z.object({
       ok: z.boolean(),
     })
     .optional(),
+  schema: z
+    .object({
+      ok: z.boolean(),
+      missing: z.array(z.string()),
+      found: z.array(z.string()),
+      method: z.enum(['supabase', 'direct-pg', 'failed']).optional(),
+      timestamp: z.string().optional(),
+    })
+    .optional(),
+  shadow_fallbacks: z
+    .object({
+      processed_fallback: z.boolean(),
+      supabase_available: z.boolean(),
+      fallback_reason: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const OpsReport = z.object({

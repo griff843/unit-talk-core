@@ -1,4 +1,4 @@
-﻿# Unit Talk Core
+# Unit Talk Core
 
 ## Status & Ops
 
@@ -24,14 +24,58 @@ See RUNBOOK.md for setup instructions.
   - npm run ops:all
   - Writes out/ops/ops.json with ok/breaches and component details
 
-
-
 ## Env validation and smoke probes
 
 - Validate env: npm run env:validate (writes out/env/validate.json)
 - Run smoke probes (Windows-safe): npm run smoke:all (writes out/smoke/*.json)
 - Live checks (non-shadow only): Temporal (describeTaskQueue) and Supabase/DB policy probe run inside ops:all
 - Discord smoke honors SHADOW_MODE and PUBLISH_TO_DISCORD flags (dry-run by default)
+
+## Environment Variables & Configuration
+
+### Core Operation Flags
+- **SHADOW_MODE**: Controls shadow mode behavior (default: `false`)
+  - `true`: Runs in shadow mode for safe testing, may use seed sidecar fallback for processed counts if `processed_at` is missing
+  - `false`: Live mode with full database writes
+- **PUBLISH_TO_DISCORD**: Controls Discord publishing (default: `false`)
+  - Should be `false` for all CI/E2E testing environments
+- **ALLOW_PROMOTION_IN_SHADOW**: Advanced testing flag (default: `false`)
+  - `false`: No promotions are written to DB in shadow mode (recommended)
+  - `true`: Promotions are written but marked with shadow context (advanced testing only)
+
+### Processing Counts in Shadow Mode
+In `SHADOW_MODE=true`, processed counts may use fallback strategies when `processed_at` columns are missing:
+1. Primary: Direct `processed_at` column count
+2. Fallback: Seed sidecar data (from recent seeding operations)
+3. Final fallback: Raw ingestion count mirror (shadow mode only)
+
+## Environment & Validation
+
+- Migrations and direct DB scripts use DATABASE_URL_DIRECT (non-pooling URI) when present; otherwise they fall back to DATABASE_URL.
+- Quick verification commands:
+  - npm run db:verify:shape
+  - npm run db:verify:session
+
+
+## DB Verify & Patch
+
+- What it checks:
+  - db:verify:shape -> presence of tables, required columns, and important indexes
+  - db:verify:session -> current app.role/app.tenant_id session and basic RLS read
+- JSON outputs (non-blocking even on error):
+  - out/db/verify-shape.json
+  - out/db/verify-session.json
+- CI always uploads db-verification artifact (non-blocking)
+- If shape is missing on a fresh DB, run one-time patch:
+  - **npm run db:patch:shape** (creates/updates core tables and required columns)
+
+### Column Checking System
+
+The verification system validates required columns for core operations:
+- **raw_props**: `inserted_at`, `processed_at` (required for ingestion workflow)  
+- **unified_picks**: `promoted_at`, `raw_id` (required for promotion pipeline)
+
+Produces diagnostic output in `out/db/column-check.json` for troubleshooting schema issues.
 
 ## How to run
 

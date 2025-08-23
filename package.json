@@ -54,6 +54,10 @@
     "db:migrate:up": "tsx scripts/db/migrate-up.ts",
     "db:index:audit": "tsx scripts/db/index-audit.ts",
     "acceptance:db-hygiene": "tsx scripts/acceptance/db-hygiene.ts",
+    "db:verify:shape": "tsx scripts/db/verify-shape.ts",
+    "db:verify:session": "tsx scripts/db/verify-session.ts",
+    "db:patch:shape": "tsx scripts/db/shape-patch-direct.ts",
+    "db:check:columns": "tsx scripts/db/column-check.ts",
     "postinstall": "husky install"
   },
   "devDependencies": {

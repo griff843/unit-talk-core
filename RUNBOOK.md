@@ -335,6 +335,14 @@ npm run ops:all || curl -X POST $SLACK_WEBHOOK \
 
 ### Output Locations
 
+### Investigate schema issues (DB verification)
+
+- Run schema checks: `npm run db:verify:shape` and `npm run db:verify:session`
+- Inspect artifact `db-verification` from CI (non-blocking)
+- If columns/indexes are missing on a new DB, apply one-time patch: `npm run db:patch:shape`
+- Re-run verifiers and confirm out/db/*.json show ok:true or enumerate what remains missing
+
+
 - Health checks: `out/ops/*.json`
 - Canary results: `out/canary/*.json`
 - Acceptance tests: `scripts/e2e/out/acceptance/*.json`

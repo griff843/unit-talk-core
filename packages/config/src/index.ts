@@ -84,6 +84,7 @@ const configSchema = z.object({
   // =============================================================================
   SHADOW_MODE: booleanSchema.default('true'),
   PUBLISH_TO_DISCORD: booleanSchema.default('false'),
+  ALLOW_PROMOTION_IN_SHADOW: booleanSchema.default('false'),
   MAX_ALLOWED_PROMOTES_5MIN: positiveIntSchema.default('20'),
   
   // Row Level Security session variables
@@ -461,6 +462,7 @@ export const config = {
     return {
       shadowMode: cfg.SHADOW_MODE,
       publishToDiscord: cfg.PUBLISH_TO_DISCORD,
+      allowPromotionInShadow: cfg.ALLOW_PROMOTION_IN_SHADOW,
       maxPromotesPer5Min: cfg.MAX_ALLOWED_PROMOTES_5MIN,
       enableDebugRoutes: cfg.ENABLE_DEBUG_ROUTES,
       enableAdminRoutes: cfg.ENABLE_ADMIN_ROUTES,
