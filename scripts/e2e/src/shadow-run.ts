@@ -1,14 +1,16 @@
 #!/usr/bin/env tsx
 
 /**
- * Shadow run E2E test for promoter workflow
- * Seeds canary → runs promoter → validates non-zero promotions
+ * Shadow run E2E test for complete ingestion pipeline
+ * Feed → Processor → Promoter with parity validation
+ * Validates raw_new ≥ processed ≥ promoted and non-zero promotions
  * Outputs JSON result for acceptance harness
  */
 
 import { execSync } from 'child_process';
 import { logger } from '@unit-talk/observability';
 import { executePromoterWorkflow } from '../../../apps/worker/temporal/src/adapters/promoterAdapter.js';
+import { executeFeedWorkflow, getRawPropsStatistics } from '../../../apps/worker/temporal/src/adapters/feedAdapter.js';
 import { createAnonClient } from '@unit-talk/db';
 import { getConfig } from '@unit-talk/config';
 
@@ -16,16 +18,24 @@ interface ShadowRunResult {
   success: boolean;
   timestamp: string;
   results: {
-    canary_seeded: boolean;
+    feed_executed: boolean;
     promoter_executed: boolean;
+    ingestion_count: number;
+    processing_count: number;
     promotions_count: number;
+    parity_validation: boolean;
     flood_guard_triggered: boolean;
-    validation_passed: boolean;
+    pipeline_validation_passed: boolean;
   };
   metrics: {
-    raw_new: number;
-    processed: number;
-    promoted: number;
+    raw_new_5min: number;
+    processed_5min: number;
+    promoted_5min: number;
+    parity_check: {
+      raw_ge_processed: boolean;
+      processed_ge_promoted: boolean;
+      overall_parity: boolean;
+    };
   };
   error?: string;
   details?: any;
@@ -35,28 +45,43 @@ async function runShadowTest(): Promise<ShadowRunResult> {
   const startTime = new Date();
   
   try {
-    logger.info('Starting shadow run E2E test', { timestamp: startTime.toISOString() });
+    logger.info('Starting complete pipeline shadow run E2E test', { timestamp: startTime.toISOString() });
     
-    // Step 1: Seed canary data if needed
-    logger.info('Seeding canary data...');
-    await seedCanaryData();
+    // Step 1: Execute Feed workflow (ingestion + processing)
+    logger.info('Executing feed workflow (ingestion + processing)...');
+    const feedResult = await executeFeedWorkflow({
+      enableDeduplication: true,
+      minQualityScore: 0.3, // Lower threshold for testing
+      batchSize: 5,
+      maxItemsPerRun: 10,
+      dryRun: false, // Actually insert for full pipeline test
+    });
     
-    // Step 2: Verify canary exists
-    const canaryCount = await getCanaryCount();
-    if (canaryCount === 0) {
-      throw new Error('Canary seeding failed - no canary data found');
+    if (!feedResult.success) {
+      throw new Error(`Feed workflow failed: ${feedResult.error}`);
     }
     
-    logger.info('Canary data verified', { count: canaryCount });
+    logger.info('Feed workflow completed', {
+      ingested: feedResult.ingested,
+      processed: feedResult.processed,
+      rejected: feedResult.rejected,
+    });
     
-    // Step 3: Run promoter workflow in dry-run mode for shadow testing
-    logger.info('Executing promoter workflow (shadow mode)...');
+    // Step 2: Wait a moment for database consistency
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Step 3: Get initial pipeline metrics
+    const initialMetrics = await getPipelineMetrics();
+    logger.info('Initial pipeline metrics', initialMetrics);
+    
+    // Step 4: Run promoter workflow
+    logger.info('Executing promoter workflow...');
     const promoterResult = await executePromoterWorkflow({
       maxPromotionsPerWindow: 20, // Use default flood guard
       windowSizeMinutes: 5,
-      minQualityThreshold: 0.5, // Lower threshold for testing
-      maxAgeHours: 2, // Accept recent canary data
-      dryRun: false, // Actually promote in shadow (will be cleaned up)
+      minQualityThreshold: 0.3, // Lower threshold for testing
+      maxAgeHours: 2, // Accept recent data
+      dryRun: false, // Actually promote for full pipeline test
     });
     
     if (!promoterResult.success) {
@@ -69,108 +94,87 @@ async function runShadowTest(): Promise<ShadowRunResult> {
       floodGuard: promoterResult.floodGuardTriggered
     });
     
-    // Step 4: Get final metrics
-    const metrics = await getSystemMetrics();
+    // Step 5: Get final pipeline metrics
+    const finalMetrics = await getPipelineMetrics();
+    logger.info('Final pipeline metrics', finalMetrics);
     
-    // Step 5: Validate results
-    const validationPassed = validateResults(promoterResult, metrics);
+    // Step 6: Validate parity constraints
+    const parityCheck = validatePipelineParity(finalMetrics);
+    const pipelineValidation = validatePipelineResults(feedResult, promoterResult, finalMetrics, parityCheck);
     
     const result: ShadowRunResult = {
       success: true,
       timestamp: new Date().toISOString(),
       results: {
-        canary_seeded: canaryCount > 0,
+        feed_executed: feedResult.success,
         promoter_executed: promoterResult.success,
+        ingestion_count: feedResult.ingested,
+        processing_count: feedResult.processed,
         promotions_count: promoterResult.promoted,
+        parity_validation: parityCheck.overall_parity,
         flood_guard_triggered: promoterResult.floodGuardTriggered,
-        validation_passed: validationPassed,
+        pipeline_validation_passed: pipelineValidation,
       },
       metrics: {
-        raw_new: metrics.rawCount,
-        processed: metrics.processedCount,
-        promoted: metrics.promotedCount,
+        raw_new_5min: finalMetrics.rawCount,
+        processed_5min: finalMetrics.processedCount,
+        promoted_5min: finalMetrics.promotedCount,
+        parity_check: parityCheck,
       },
       details: {
+        feedResult,
         promoterResult,
-        systemMetrics: metrics,
+        initialMetrics,
+        finalMetrics,
         duration: Date.now() - startTime.getTime(),
       },
     };
     
-    logger.info('Shadow run completed successfully', result);
+    logger.info('Complete pipeline shadow run completed successfully', result.results);
     return result;
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Shadow run failed', { error: errorMessage });
+    logger.error('Pipeline shadow run failed', { error: errorMessage });
     
     return {
       success: false,
       timestamp: new Date().toISOString(),
       results: {
-        canary_seeded: false,
+        feed_executed: false,
         promoter_executed: false,
+        ingestion_count: 0,
+        processing_count: 0,
         promotions_count: 0,
+        parity_validation: false,
         flood_guard_triggered: false,
-        validation_passed: false,
+        pipeline_validation_passed: false,
       },
       metrics: {
-        raw_new: 0,
-        processed: 0,
-        promoted: 0,
+        raw_new_5min: 0,
+        processed_5min: 0,
+        promoted_5min: 0,
+        parity_check: {
+          raw_ge_processed: false,
+          processed_ge_promoted: false,
+          overall_parity: false,
+        },
       },
       error: errorMessage,
     };
   }
 }
 
-async function seedCanaryData(): Promise<void> {
-  try {
-    const config = getConfig();
-    const command = `psql "${config.DATABASE_URL}" -f scripts/db/seed-canary.sql`;
-    
-    logger.debug('Executing canary seed command', { command: command.replace(config.DATABASE_URL, '<DATABASE_URL>') });
-    
-    const output = execSync(command, { encoding: 'utf-8' });
-    
-    logger.debug('Canary seed output', { output });
-    
-  } catch (error) {
-    logger.error('Canary seeding failed', { error: error instanceof Error ? error.message : String(error) });
-    throw new Error(`Failed to seed canary data: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
+// Remove canary seeding functions - we now use feed workflow for data generation
 
-async function getCanaryCount(): Promise<number> {
-  try {
-    const client = createAnonClient();
-    
-    const { data, error } = await client
-      .from('raw_props')
-      .select('id', { count: 'exact', head: true })
-      .eq('data->>type', 'canary_test')
-      .gte('inserted_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()); // Last 2 hours
-    
-    if (error) {
-      throw new Error(`Failed to count canary data: ${error.message}`);
-    }
-    
-    return data?.length ?? 0;
-    
-  } catch (error) {
-    logger.error('Failed to get canary count', { error: error instanceof Error ? error.message : String(error) });
-    throw error;
-  }
-}
-
-interface SystemMetrics {
+interface PipelineMetrics {
   rawCount: number;
   processedCount: number;
   promotedCount: number;
   windowStart: string;
 }
 
-async function getSystemMetrics(): Promise<SystemMetrics> {
+async function getPipelineMetrics(): Promise<PipelineMetrics> {
   try {
     const client = createAnonClient();
     const windowStart = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
@@ -214,26 +218,91 @@ async function getSystemMetrics(): Promise<SystemMetrics> {
     };
     
   } catch (error) {
-    logger.error('Failed to get system metrics', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('Failed to get pipeline metrics', { error: error instanceof Error ? error.message : String(error) });
     throw error;
   }
 }
 
-function validateResults(promoterResult: any, metrics: SystemMetrics): boolean {
+/**
+ * Validate pipeline parity constraints: raw ≥ processed ≥ promoted
+ */
+function validatePipelineParity(metrics: PipelineMetrics): {
+  raw_ge_processed: boolean;
+  processed_ge_promoted: boolean;
+  overall_parity: boolean;
+} {
+  const raw_ge_processed = metrics.rawCount >= metrics.processedCount;
+  const processed_ge_promoted = metrics.processedCount >= metrics.promotedCount;
+  const overall_parity = raw_ge_processed && processed_ge_promoted;
+  
+  logger.info('Pipeline parity check', {
+    raw: metrics.rawCount,
+    processed: metrics.processedCount,
+    promoted: metrics.promotedCount,
+    raw_ge_processed,
+    processed_ge_promoted,
+    overall_parity,
+  });
+  
+  return {
+    raw_ge_processed,
+    processed_ge_promoted,
+    overall_parity,
+  };
+}
+
+/**
+ * Validate complete pipeline results
+ */
+function validatePipelineResults(
+  feedResult: any,
+  promoterResult: any,
+  metrics: PipelineMetrics,
+  parityCheck: any
+): boolean {
   try {
-    // Validation 1: Promoter must have succeeded
+    // Validation 1: Feed workflow must have succeeded
+    if (!feedResult.success) {
+      logger.error('Validation failed: feed workflow did not succeed');
+      return false;
+    }
+    
+    // Validation 2: Promoter workflow must have succeeded
     if (!promoterResult.success) {
       logger.error('Validation failed: promoter workflow did not succeed');
       return false;
     }
     
-    // Validation 2: Must have promoted at least one item (non-zero)
+    // Validation 3: Must have non-zero ingestion
+    if (feedResult.ingested === 0) {
+      logger.error('Validation failed: zero ingestion - feed must ingest data');
+      return false;
+    }
+    
+    // Validation 4: Must have non-zero processing
+    if (feedResult.processed === 0) {
+      logger.error('Validation failed: zero processing - feed must process data');
+      return false;
+    }
+    
+    // Validation 5: Must have promoted at least one item (CRITICAL)
     if (promoterResult.promoted === 0) {
       logger.error('Validation failed: zero promotions - promoter must promote non-zero items');
       return false;
     }
     
-    // Validation 3: Promoted count should not exceed flood guard limit
+    // Validation 6: Pipeline parity must hold (raw ≥ processed ≥ promoted)
+    if (!parityCheck.overall_parity) {
+      logger.error('Validation failed: pipeline parity constraint violated', {
+        raw: metrics.rawCount,
+        processed: metrics.processedCount,
+        promoted: metrics.promotedCount,
+        parity: parityCheck,
+      });
+      return false;
+    }
+    
+    // Validation 7: Promoted count should not exceed flood guard limit
     if (promoterResult.promoted > 20) {
       logger.error('Validation failed: promoted count exceeds flood guard limit', {
         promoted: promoterResult.promoted,
@@ -242,7 +311,7 @@ function validateResults(promoterResult: any, metrics: SystemMetrics): boolean {
       return false;
     }
     
-    // Validation 4: System metrics should be consistent
+    // Validation 8: System metrics should be consistent with workflow results
     if (metrics.promotedCount < promoterResult.promoted) {
       logger.error('Validation failed: system metrics inconsistent with promoter result', {
         systemPromoted: metrics.promotedCount,
@@ -251,15 +320,18 @@ function validateResults(promoterResult: any, metrics: SystemMetrics): boolean {
       return false;
     }
     
-    logger.info('All validations passed', {
-      promoted: promoterResult.promoted,
-      systemMetrics: metrics
+    logger.info('All pipeline validations passed', {
+      feedIngested: feedResult.ingested,
+      feedProcessed: feedResult.processed,
+      promoterPromoted: promoterResult.promoted,
+      systemMetrics: metrics,
+      parityCheck,
     });
     
     return true;
     
   } catch (error) {
-    logger.error('Validation error', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('Pipeline validation error', { error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }
@@ -273,17 +345,22 @@ async function main() {
     console.log(JSON.stringify(result, null, 2));
     
     // Exit with appropriate code
-    if (!result.success || result.results.promotions_count === 0) {
-      logger.error('Shadow run failed or no promotions', {
+    if (!result.success || result.results.promotions_count === 0 || !result.results.parity_validation) {
+      logger.error('Pipeline shadow run failed', {
         success: result.success,
-        promotions: result.results.promotions_count
+        ingested: result.results.ingestion_count,
+        processed: result.results.processing_count,
+        promotions: result.results.promotions_count,
+        parity: result.results.parity_validation,
       });
       process.exit(1);
     }
     
-    logger.info('Shadow run successful', {
+    logger.info('Complete pipeline shadow run successful', {
+      ingested: result.results.ingestion_count,
+      processed: result.results.processing_count,
       promoted: result.results.promotions_count,
-      metrics: result.metrics
+      parityCheck: result.metrics.parity_check,
     });
     
     process.exit(0);

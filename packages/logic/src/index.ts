@@ -1,10 +1,11 @@
 // Pure business logic exports - no I/O operations
 
-// Types
+// Promotion logic
 export * from './promotion/types.js';
-
-// Business rules
 export * from './promotion/rules.js';
-
-// Selection algorithms
 export * from './promotion/selectors.js';
+
+// Feed processing logic
+export * from './feed/types.js';
+export * from './feed/processor.js';
+export * from './feed/utils.js';
