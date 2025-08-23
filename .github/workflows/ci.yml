@@ -12,19 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build all packages
         run: npm run build
-        
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -39,22 +39,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run ESLint
         run: npm run lint
-      
+
       - name: Check Prettier formatting
         run: npm run format:check
-      
+
       - name: Type check
         run: npm run type-check
 
@@ -63,16 +63,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run unit tests
         run: npm run test:unit
 
@@ -93,28 +93,28 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     env:
       DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
       SUPABASE_URL: https://dummy.supabase.co
       SUPABASE_ANON_KEY: dummy_anon_key
       SUPABASE_SERVICE_KEY: dummy_service_key
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Build packages
         run: npm run build
-      
+
       - name: Run migration dry-run
         run: npm run migrate:dry-run
 
@@ -122,7 +122,7 @@ jobs:
     name: API Smoke Test
     runs-on: ubuntu-latest
     needs: [build]
-    
+
     services:
       postgres:
         image: postgres:15
@@ -137,7 +137,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     env:
       NODE_ENV: staging
       DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
@@ -147,48 +147,48 @@ jobs:
       API_PORT: 3010
       SHADOW_MODE: true
       PUBLISH_TO_DISCORD: false
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
           name: build-artifacts
-      
+
       - name: Run migrations
         run: npm run migrate:up
-      
+
       - name: Start API server in background
         run: |
           cd apps/api
           npm start &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
-          
+
       - name: Wait for API to be ready
         run: |
           timeout 30 bash -c 'until curl -f http://localhost:3010/api/health; do sleep 1; done'
-      
+
       - name: Test health endpoint
         run: |
           curl -f http://localhost:3010/api/health
-          
+
       - name: Test metrics endpoint
         run: |
           curl -f -X POST http://localhost:3010/api/metrics/ingestion \
             -H "Content-Type: application/json" \
             -d '{"test": "smoke-test"}'
-      
+
       - name: Stop API server
         if: always()
         run: |
@@ -200,7 +200,7 @@ jobs:
     name: Temporal Worker Ping
     runs-on: ubuntu-latest
     needs: [build]
-    
+
     env:
       NODE_ENV: staging
       DATABASE_URL: postgres://dummy:dummy@localhost:5432/dummy
@@ -209,24 +209,24 @@ jobs:
       SUPABASE_SERVICE_KEY: dummy_service_key
       TEMPORAL_SERVER_ADDRESS: localhost:7233
       TEMPORAL_TASK_QUEUE: test-queue
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
           name: build-artifacts
-      
+
       - name: Test Temporal worker configuration
         run: |
           cd apps/worker
@@ -238,7 +238,7 @@ jobs:
     name: E2E Shadow Test
     runs-on: ubuntu-latest
     needs: [build, migration-dry-run]
-    
+
     services:
       postgres:
         image: postgres:15
@@ -253,7 +253,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     env:
       NODE_ENV: staging
       DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
@@ -263,48 +263,48 @@ jobs:
       API_PORT: 3010
       SHADOW_MODE: true
       PUBLISH_TO_DISCORD: false
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
           name: build-artifacts
-      
+
       - name: Run migrations
         run: npm run migrate:up
-      
+
       - name: Start API server in background
         run: |
           cd apps/api
           npm start &
           API_PID=$!
           echo "API_PID=$API_PID" >> $GITHUB_ENV
-          
+
       - name: Wait for API to be ready
         run: |
           timeout 30 bash -c 'until curl -f http://localhost:3010/api/health; do sleep 1; done'
-      
+
       - name: Run E2E acceptance tests
         run: npm run accept:all
-      
+
       - name: Upload E2E test results
         if: always()
         uses: actions/upload-artifact@v3
         with:
           name: e2e-test-results
           path: scripts/e2e/out/
-      
+
       - name: Stop API server
         if: always()
         run: |
@@ -316,24 +316,53 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: [build]
-    
+
     strategy:
       matrix:
         app: [api, worker]
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
           name: build-artifacts
-      
+
       - name: Build Docker image
         run: |
           docker build -t unit-talk-${{ matrix.app }}:test -f apps/${{ matrix.app }}/Dockerfile .
-      
+
       - name: Test Docker image
         run: |
           docker run --rm unit-talk-${{ matrix.app }}:test --help || true
           echo "Docker image for ${{ matrix.app }} builds successfully"
+
+  ci-summary:
+    name: CI Failure Summary (Linear)
+    runs-on: ubuntu-latest
+    needs: [build, lint, unit-tests, migration-dry-run, api-smoke-test, temporal-ping, e2e-shadow, docker-build]
+    if: ${{ failure() }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install dependencies (for script runtime)
+        run: npm ci --ignore-scripts
+      - name: Compute failing job names
+        id: names
+        run: |
+          echo "FAILING=$(jq -r '.jobs | to_entries | map(select(.value.result=="failure")) | map(.value.name) | join(" ")' <<< '${{ toJson(needs) }}')" >> $GITHUB_OUTPUT
+      - name: Report to Linear
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          BREACH_NAME: "CI pipeline failures"
+          FAILING_JOBS: ${{ steps.names.outputs.FAILING }}
+        run: node scripts/ci/report-to-linear.js

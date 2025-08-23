@@ -9,3 +9,9 @@ export * from './promotion/selectors.js';
 export * from './feed/types.js';
 export * from './feed/processor.js';
 export * from './feed/utils.js';
+
+// Grading logic
+export * from './grading/types.js';
+export * from './grading/features.js';
+export * from './grading/rules.js';
+export * from './grading/scoring.js';

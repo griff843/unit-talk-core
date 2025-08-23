@@ -1,0 +1,58 @@
+name: Nightly Ops Health Checks
+
+on:
+  schedule:
+    - cron: '0 * * * *' # hourly
+  workflow_dispatch:
+
+jobs:
+  ops:
+    name: Ops Health
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare out/ops directory
+        run: node -e "require('fs').mkdirSync('out/ops',{recursive:true});"
+
+      - name: Run ops:all
+        id: run_ops
+        run: |
+          node -e "console.log('Starting ops:all at '+new Date().toISOString())"
+          npm run ops:all
+
+      - name: Detect ops breaches (Node)
+        id: detect
+        run: |
+          node -e "const fs=require('fs');const p='out/ops/ops.json';const out=process.env.GITHUB_OUTPUT;let breached='false', name='';if(fs.existsSync(p)){const r=JSON.parse(fs.readFileSync(p,'utf8'));const ok=r && r.ok===true && Array.isArray(r.breaches) && r.breaches.length===0;breached= ok ? 'false' : 'true'; if(!ok){name=(r.breaches||[]).map(b=>b.name).join(', ');} } fs.appendFileSync(out, `breached=${breached}\n`); if(name) fs.appendFileSync(out, `breach_name=${name}\n`);"
+
+      - name: Upload ops artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ops-artifacts-${{ github.run_id }}
+          path: |
+            out/ops/*
+          retention-days: 7
+
+      - name: Report to Linear on failure or breach
+        if: ${{ failure() || steps.detect.outputs.breached == 'true' }}
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          BREACH_NAME: ${{ steps.detect.outputs.breach_name || 'Ops failure detected' }}
+        run: node scripts/ci/report-to-linear.js
+

@@ -11,6 +11,7 @@ import { execSync } from 'child_process';
 import { logger } from '@unit-talk/observability';
 import { executePromoterWorkflow } from '../../../apps/worker/temporal/src/adapters/promoterAdapter.js';
 import { executeFeedWorkflow, getRawPropsStatistics } from '../../../apps/worker/temporal/src/adapters/feedAdapter.js';
+import { executeGradingWorkflow } from '../../../apps/worker/temporal/src/adapters/gradingAdapter.js';
 import { createAnonClient } from '@unit-talk/db';
 import { getConfig } from '@unit-talk/config';
 
@@ -20,9 +21,11 @@ interface ShadowRunResult {
   results: {
     feed_executed: boolean;
     promoter_executed: boolean;
+    grading_executed: boolean;
     ingestion_count: number;
     processing_count: number;
     promotions_count: number;
+    graded_count: number;
     parity_validation: boolean;
     flood_guard_triggered: boolean;
     pipeline_validation_passed: boolean;
@@ -31,6 +34,7 @@ interface ShadowRunResult {
     raw_new_5min: number;
     processed_5min: number;
     promoted_5min: number;
+    graded_5min: number;
     parity_check: {
       raw_ge_processed: boolean;
       processed_ge_promoted: boolean;
@@ -94,13 +98,36 @@ async function runShadowTest(): Promise<ShadowRunResult> {
       floodGuard: promoterResult.floodGuardTriggered
     });
     
-    // Step 5: Get final pipeline metrics
+    // Step 5: Wait a moment for database consistency
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Step 6: Run grading workflow (shadow mode by default)
+    logger.info('Executing grading workflow...');
+    const gradingResult = await executeGradingWorkflow({
+      shadowMode: true, // Shadow mode - no writes
+      qualityThreshold: 0.5, // Lower threshold for testing
+      batchSize: 10,
+      maxAge: 60, // 1 hour max age
+    });
+    
+    if (!gradingResult.success) {
+      logger.warn(`Grading workflow failed: ${gradingResult.error}`);
+      // Don't fail the entire pipeline for grading failures in shadow mode
+    }
+    
+    logger.info('Grading workflow completed', {
+      graded: gradingResult.graded,
+      failed: gradingResult.failed,
+      avgScore: gradingResult.metadata.avgScore,
+    });
+    
+    // Step 7: Get final pipeline metrics
     const finalMetrics = await getPipelineMetrics();
     logger.info('Final pipeline metrics', finalMetrics);
     
-    // Step 6: Validate parity constraints
+    // Step 8: Validate parity constraints
     const parityCheck = validatePipelineParity(finalMetrics);
-    const pipelineValidation = validatePipelineResults(feedResult, promoterResult, finalMetrics, parityCheck);
+    const pipelineValidation = validatePipelineResults(feedResult, promoterResult, gradingResult, finalMetrics, parityCheck);
     
     const result: ShadowRunResult = {
       success: true,
@@ -108,9 +135,11 @@ async function runShadowTest(): Promise<ShadowRunResult> {
       results: {
         feed_executed: feedResult.success,
         promoter_executed: promoterResult.success,
+        grading_executed: gradingResult.success,
         ingestion_count: feedResult.ingested,
         processing_count: feedResult.processed,
         promotions_count: promoterResult.promoted,
+        graded_count: gradingResult.graded,
         parity_validation: parityCheck.overall_parity,
         flood_guard_triggered: promoterResult.floodGuardTriggered,
         pipeline_validation_passed: pipelineValidation,
@@ -119,11 +148,13 @@ async function runShadowTest(): Promise<ShadowRunResult> {
         raw_new_5min: finalMetrics.rawCount,
         processed_5min: finalMetrics.processedCount,
         promoted_5min: finalMetrics.promotedCount,
+        graded_5min: gradingResult.graded, // Shadow mode graded count
         parity_check: parityCheck,
       },
       details: {
         feedResult,
         promoterResult,
+        gradingResult,
         initialMetrics,
         finalMetrics,
         duration: Date.now() - startTime.getTime(),
@@ -143,9 +174,11 @@ async function runShadowTest(): Promise<ShadowRunResult> {
       results: {
         feed_executed: false,
         promoter_executed: false,
+        grading_executed: false,
         ingestion_count: 0,
         processing_count: 0,
         promotions_count: 0,
+        graded_count: 0,
         parity_validation: false,
         flood_guard_triggered: false,
         pipeline_validation_passed: false,
@@ -154,6 +187,7 @@ async function runShadowTest(): Promise<ShadowRunResult> {
         raw_new_5min: 0,
         processed_5min: 0,
         promoted_5min: 0,
+        graded_5min: 0,
         parity_check: {
           raw_ge_processed: false,
           processed_ge_promoted: false,
@@ -257,6 +291,7 @@ function validatePipelineParity(metrics: PipelineMetrics): {
 function validatePipelineResults(
   feedResult: any,
   promoterResult: any,
+  gradingResult: any,
   metrics: PipelineMetrics,
   parityCheck: any
 ): boolean {
@@ -320,10 +355,25 @@ function validatePipelineResults(
       return false;
     }
     
+    // Validation 9: Grading should have processed promoted picks (in shadow mode)
+    // Note: Grading failures don't fail the entire pipeline, but log for awareness
+    if (gradingResult.success) {
+      logger.info('Grading validation passed', {
+        graded: gradingResult.graded,
+        avgScore: gradingResult.metadata.avgScore,
+        tierDistribution: gradingResult.metadata.tierDistribution,
+      });
+    } else {
+      logger.warn('Grading validation note: grading workflow failed but does not fail pipeline', {
+        error: gradingResult.error,
+      });
+    }
+    
     logger.info('All pipeline validations passed', {
       feedIngested: feedResult.ingested,
       feedProcessed: feedResult.processed,
       promoterPromoted: promoterResult.promoted,
+      gradingProcessed: gradingResult.graded,
       systemMetrics: metrics,
       parityCheck,
     });

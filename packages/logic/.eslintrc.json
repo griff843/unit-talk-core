@@ -1,0 +1,56 @@
+{
+  "extends": ["../../.eslintrc.json"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@supabase/*"],
+            "message": "Supabase clients are not allowed in pure logic packages. Use dependency injection instead."
+          },
+          {
+            "group": ["pg", "mysql2", "sqlite3", "mongodb", "redis"],
+            "message": "Direct database clients are not allowed in pure logic packages. Use dependency injection instead."
+          },
+          {
+            "group": ["express", "fastify", "koa", "hapi"],
+            "message": "HTTP server frameworks are not allowed in pure logic packages. This is business logic only."
+          },
+          {
+            "group": ["fs", "fs/promises", "fs-extra"],
+            "message": "File system operations are not allowed in pure logic packages. Use dependency injection instead."
+          },
+          {
+            "group": ["discord.js", "@discordjs/*"],
+            "message": "Discord client is not allowed in pure logic packages. Use dependency injection instead."
+          },
+          {
+            "group": ["node:fs", "node:fs/promises", "node:http", "node:https", "node:net", "node:dgram"],
+            "message": "Node.js I/O modules are not allowed in pure logic packages. Use dependency injection instead."
+          }
+        ]
+      }
+    ],
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "process",
+        "message": "Direct access to process is not allowed in pure logic. Use configuration injection instead."
+      },
+      {
+        "name": "Buffer",
+        "message": "Direct Buffer usage should be avoided in pure logic. Use typed data structures instead."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/__tests__/**/*", "**/*.test.*", "**/*.spec.*"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-globals": "off"
+      }
+    }
+  ]
+}

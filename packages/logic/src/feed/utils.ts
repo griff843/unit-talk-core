@@ -68,7 +68,7 @@ export function deduplicateItems(
     
     // Check for similar content
     let isDuplicate = false;
-    for (const [existingHash, existingItem] of contentMap) {
+    for (const [, existingItem] of contentMap) {
       const existingContent = extractContentSignature(existingItem);
       const similarity = calculateContentSimilarity(content, existingContent);
       

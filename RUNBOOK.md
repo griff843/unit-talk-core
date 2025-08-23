@@ -87,6 +87,20 @@ SHADOW_MODE=true              # Required for CI/E2E
 PUBLISH_TO_DISCORD=false      # Required for CI/E2E
 
 # Security & Compliance
+
+# Linear Alerting Integration
+
+- GitHub Actions will automatically open/update a Linear issue when:
+  - The hourly ops workflow detects a failure or a breach in out/ops/*.json
+  - Any CI job in .github/workflows/ci.yml fails (summary job posts to Linear)
+- De-duplication: issues are grouped per repo + breach name per day (24h signature)
+
+Required secrets (set in GitHub Environments, e.g. staging, production):
+- LINEAR_API_KEY (Linear personal API key)
+- LINEAR_TEAM_ID (Linear team ID)
+
+Local .env example entries are present in .env.example for reference only; do not store secrets in the repo.
+
 MAX_ALLOWED_PROMOTES_5MIN=20  # Flood guard (default)
 ```
 
@@ -254,6 +268,25 @@ npm run canary:monitor
 
 ```bash
 npm run ops:all
+
+### How to run locally (Ops)
+
+- Install deps: npm ci
+- Run all checks: npm run ops:all
+- Output: out/ops/ops.json (validated against scripts/ops/schema.ts)
+- Exit code: 0 when ok:true (no breaches), 1 when breaches exist
+
+To inspect quickly on Windows:
+- type .\out\ops\ops.json | more
+
+### Troubleshoot breaches
+
+- parity-breach: Check data parity and metrics; rerun npm run ops:parity
+- rls-violations: Review RLS policies and recent violations; rerun npm run ops:rls
+- temporal-health: Inspect Temporal backlog/failures; rerun npm run ops:temporal
+
+All checks have a 60s timeout per task to prevent hangs.
+
 # Parallel execution of all health checks
 # 30-second timeout per check
 # Unified reporting

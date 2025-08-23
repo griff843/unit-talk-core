@@ -103,10 +103,10 @@ export const PROMOTION_CONSTANTS = {
   DEFAULT_MAX_AGE_HOURS: 24,
   DEFAULT_DEDUPE_LOOKBACK_HOURS: 48,
   DEFAULT_SCORING_WEIGHTS: {
-    time: 0.25,
-    quality: 0.30,
-    uniqueness: 0.20,
-    source: 0.15,
-    market: 0.10,
+    time: 0.25 as number,
+    quality: 0.30 as number,
+    uniqueness: 0.20 as number,
+    source: 0.15 as number,
+    market: 0.10 as number,
   },
 } as const;

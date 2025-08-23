@@ -34,6 +34,10 @@
     "claude:pre": "cross-env CLAUDE_FLOW_CMD=\"%*\" tsx scripts/claude/hooks.ts pre",
     "claude:post": "cross-env CLAUDE_FLOW_CMD=\"%*\" tsx scripts/claude/hooks.ts post",
     "canary:monitor": "tsx scripts/canary/monitor.ts",
+    "ops:parity": "tsx scripts/ops/parity-check.ts",
+    "ops:rls": "tsx scripts/ops/rls-watch.ts",
+    "ops:temporal": "tsx scripts/ops/temporal-health.ts",
+    "ops:all": "tsx scripts/ops/ops-all.ts",
     "postinstall": "husky install"
   },
   "devDependencies": {

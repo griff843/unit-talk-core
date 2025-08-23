@@ -4,7 +4,6 @@ import {
   FeedProcessingConfig,
   FeedProcessingResult,
   ContentNormalizationResult,
-  FeedProcessingError,
   FEED_CONSTANTS,
 } from './types.js';
 import { generateItemId, calculateContentHash } from './utils.js';
@@ -69,7 +68,7 @@ export function processFeedData(
       let enrichedPayload = {
         ...rawItem,
         content: normalizedContent.normalizedContent,
-      };
+      } as any;
       
       if (config.enrichment.addTimestamps) {
         enrichedPayload.processing_timestamp = currentTime.toISOString();
@@ -302,7 +301,7 @@ function normalizeContent(
 function calculateProcessingScore(
   item: RawFeedData,
   normalizedContent: ContentNormalizationResult,
-  config: FeedProcessingConfig
+  _config: FeedProcessingConfig
 ): number {
   let score = 0;
   const weights = { content: 0.4, completeness: 0.3, source: 0.2, freshness: 0.1 };
