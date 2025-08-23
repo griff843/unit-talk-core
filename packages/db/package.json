@@ -1,0 +1,28 @@
+{
+  "name": "@unit-talk/db",
+  "version": "1.0.0",
+  "description": "Supabase admin/anon creators and database utilities",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "test": "echo \"No tests yet\" && exit 0",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "migrate:up": "tsx scripts/migrate.ts up",
+    "migrate:down": "tsx scripts/migrate.ts down",
+    "migrate:dry-run": "tsx scripts/migrate.ts dry-run"
+  },
+  "dependencies": {
+    "@unit-talk/config": "*",
+    "@unit-talk/observability": "*",
+    "@supabase/supabase-js": "^2.38.4",
+    "postgres": "^3.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9"
+  }
+}

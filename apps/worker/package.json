@@ -1,0 +1,23 @@
+{
+  "name": "@unit-talk/worker",
+  "version": "1.0.0",
+  "description": "Temporal worker (worker only, no business logic yet)",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/worker.ts",
+    "start": "node dist/worker.js",
+    "test": "echo \"No tests yet\" && exit 0",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@unit-talk/config": "*",
+    "@unit-talk/observability": "*",
+    "@temporalio/worker": "^1.8.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

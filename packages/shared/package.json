@@ -1,0 +1,17 @@
+{
+  "name": "@unit-talk/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"No tests yet\" && exit 0",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "e2e-acceptance",
+  "version": "1.0.0",
+  "description": "End-to-end acceptance test suite",
+  "private": true,
+  "scripts": {
+    "accept:all": "tsx src/summary.ts",
+    "accept:env": "tsx src/env.ts",
+    "accept:psql": "tsx src/run-psql.ts",
+    "accept:migration": "tsx src/run-migration.ts",
+    "accept:metrics": "tsx src/metrics-fetch.ts",
+    "accept:security": "tsx src/non-promoter-write.ts"
+  },
+  "dependencies": {
+    "@unit-talk/config": "*",
+    "@unit-talk/db": "*",
+    "@unit-talk/observability": "*",
+    "@unit-talk/shared": "*",
+    "postgres": "^3.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}

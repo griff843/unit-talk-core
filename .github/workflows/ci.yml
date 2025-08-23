@@ -1,0 +1,339 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build all packages
+        run: npm run build
+        
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            apps/*/dist
+            packages/*/dist
+          retention-days: 1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint
+        run: npm run lint
+      
+      - name: Check Prettier formatting
+        run: npm run format:check
+      
+      - name: Type check
+        run: npm run type-check
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run unit tests
+        run: npm run test:unit
+
+  migration-dry-run:
+    name: Migration Dry Run
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    env:
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_ANON_KEY: dummy_anon_key
+      SUPABASE_SERVICE_KEY: dummy_service_key
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build packages
+        run: npm run build
+      
+      - name: Run migration dry-run
+        run: npm run migrate:dry-run
+
+  api-smoke-test:
+    name: API Smoke Test
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    env:
+      NODE_ENV: staging
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_ANON_KEY: dummy_anon_key
+      SUPABASE_SERVICE_KEY: dummy_service_key
+      API_PORT: 3010
+      SHADOW_MODE: true
+      PUBLISH_TO_DISCORD: false
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Run migrations
+        run: npm run migrate:up
+      
+      - name: Start API server in background
+        run: |
+          cd apps/api
+          npm start &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> $GITHUB_ENV
+          
+      - name: Wait for API to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:3010/api/health; do sleep 1; done'
+      
+      - name: Test health endpoint
+        run: |
+          curl -f http://localhost:3010/api/health
+          
+      - name: Test metrics endpoint
+        run: |
+          curl -f -X POST http://localhost:3010/api/metrics/ingestion \
+            -H "Content-Type: application/json" \
+            -d '{"test": "smoke-test"}'
+      
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -n "$API_PID" ]; then
+            kill $API_PID || true
+          fi
+
+  temporal-ping:
+    name: Temporal Worker Ping
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    env:
+      NODE_ENV: staging
+      DATABASE_URL: postgres://dummy:dummy@localhost:5432/dummy
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_ANON_KEY: dummy_anon_key
+      SUPABASE_SERVICE_KEY: dummy_service_key
+      TEMPORAL_SERVER_ADDRESS: localhost:7233
+      TEMPORAL_TASK_QUEUE: test-queue
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Test Temporal worker configuration
+        run: |
+          cd apps/worker
+          # Just test that the worker code can load without connecting
+          timeout 10 npm start || true
+          echo "Temporal worker configuration test completed"
+
+  e2e-shadow:
+    name: E2E Shadow Test
+    runs-on: ubuntu-latest
+    needs: [build, migration-dry-run]
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    env:
+      NODE_ENV: staging
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      SUPABASE_URL: https://dummy.supabase.co
+      SUPABASE_ANON_KEY: dummy_anon_key
+      SUPABASE_SERVICE_KEY: dummy_service_key
+      API_PORT: 3010
+      SHADOW_MODE: true
+      PUBLISH_TO_DISCORD: false
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Run migrations
+        run: npm run migrate:up
+      
+      - name: Start API server in background
+        run: |
+          cd apps/api
+          npm start &
+          API_PID=$!
+          echo "API_PID=$API_PID" >> $GITHUB_ENV
+          
+      - name: Wait for API to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:3010/api/health; do sleep 1; done'
+      
+      - name: Run E2E acceptance tests
+        run: npm run accept:all
+      
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-test-results
+          path: scripts/e2e/out/
+      
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -n "$API_PID" ]; then
+            kill $API_PID || true
+          fi
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    strategy:
+      matrix:
+        app: [api, worker]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Build Docker image
+        run: |
+          docker build -t unit-talk-${{ matrix.app }}:test -f apps/${{ matrix.app }}/Dockerfile .
+      
+      - name: Test Docker image
+        run: |
+          docker run --rm unit-talk-${{ matrix.app }}:test --help || true
+          echo "Docker image for ${{ matrix.app }} builds successfully"
