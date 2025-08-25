@@ -11,7 +11,7 @@
     "build": "npm run build --workspaces",
     "dev": "npm run dev --workspaces --if-present",
     "dev:win": "powershell -ExecutionPolicy Bypass -File ./dev.ps1",
-    "test": "npm run test --workspaces --if-present",
+    "test": "node scripts/tests/worker-dev-exit.mjs && node scripts/tests/ops-health-shape.mjs && npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspaces --if-present",
     "test:snapshots": "node scripts/ops/emit-dashboard.js && node scripts/tests/dashboard.shape.test.mjs",
     "test:contracts": "node scripts/tests/contracts.smoke.mjs",
@@ -99,6 +99,10 @@
     "db:query:unified": "npx tsx scripts/db/run-unified-picks-query.ts --since '1 hour'",
     "ops:health": "npx tsx scripts/ops/health-db.ts && npx tsx scripts/ops/health-api.ts && npx tsx scripts/ops/health-worker.ts && node scripts/ops/emit-dashboard.js",
     "ops:canary:plan": "npx tsx scripts/ops/run-canary.ts",
+    "ops:resolve:temporal": "npx tsx scripts/shared/temporal-address.ts",
+    "ops:probe:temporal": "npx tsx scripts/ops/temporal-health.ts",
+    "ops:probe:temporal:soft": "npx tsx scripts/ops/temporal-health.ts --soft",
+    "dash:emit": "node scripts/ops/emit-dashboard.js",
     "postinstall": "husky install"
   },
   "devDependencies": {

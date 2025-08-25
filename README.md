@@ -18,6 +18,17 @@ npm ci
 .\dev.ps1 up
 ```
 
+
+### Windows Quickstart
+
+- Use the helper script to start the stack with Temporal and worker handling:
+  - `npm run dev:win` (runs `./dev.ps1` under PowerShell)
+- If you prefer to run just the worker locally without Docker:
+  - `npx tsx apps/worker/src/worker.ts`
+- Tips:
+  - Ensure Node 20 is active (e.g., `nvm use 20`)
+  - If shells complain about execution policy, start PowerShell as Administrator and run: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
 ## 🔧 One-Command Development
 
 The `dev.ps1` and `dev.sh` scripts provide unified control over the entire Temporal stack:
@@ -28,10 +39,10 @@ The `dev.ps1` and `dev.sh` scripts provide unified control over the entire Tempo
 .\dev.ps1 down      # Stop all services and cleanup
 .\dev.ps1 logs      # View logs for all services
 .\dev.ps1 phase:a   # Run Phase A (Shadow mode, no promotions)
-.\dev.ps1 phase:b   # Run Phase B (Live mode, muted communications)  
+.\dev.ps1 phase:b   # Run Phase B (Live mode, muted communications)
 .\dev.ps1 phase:c   # Run Phase C (Full E2E, muted communications)
 
-# Mac/Linux  
+# Mac/Linux
 ./dev.sh up        # Start Temporal stack with health checks
 ./dev.sh down      # Stop all services and cleanup
 ./dev.sh logs      # View logs for all services
@@ -138,7 +149,7 @@ In `SHADOW_MODE=true`, processed counts may use fallback strategies when `proces
 ### Column Checking System
 
 The verification system validates required columns for core operations:
-- **raw_props**: `inserted_at`, `processed_at` (required for ingestion workflow)  
+- **raw_props**: `inserted_at`, `processed_at` (required for ingestion workflow)
 - **unified_picks**: `promoted_at`, `raw_id` (required for promotion pipeline)
 
 Produces diagnostic output in `out/db/column-check.json` for troubleshooting schema issues.

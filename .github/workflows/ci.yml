@@ -1043,7 +1043,9 @@ jobs:
           path: |
             out/ops/maintenance/*
             out/ops/dashboard.json
+            out/ops/health-*.json
             out/dev/schedules-doctor.json
             out/ops/temporal-health.json
-            out/ops/health-*.json
+            out/ops/ops-health-shape.json
+            out/ops/worker-dev-exit.json
           if-no-files-found: warn
