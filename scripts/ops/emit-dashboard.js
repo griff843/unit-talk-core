@@ -123,6 +123,35 @@ async function emitDashboard() {
     timezone: process.env.TZ || 'America/New_York',
     active: isCurrentlyQuietHours()
   };
+  
+  // Read outbox stats if available
+  try {
+    const outboxDir = 'out/recaps/outbox';
+    if (fs.existsSync(outboxDir)) {
+      const files = fs.readdirSync(outboxDir).filter(f => f.endsWith('.json')).sort();
+      if (files.length > 0) {
+        const latestOutbox = JSON.parse(fs.readFileSync(path.join(outboxDir, files[files.length - 1]), 'utf-8'));
+        dashboard.outbox = {
+          last_flush: latestOutbox.timestamp || latestOutbox.flushed_at,
+          messages_processed: latestOutbox.processed_count || 0,
+          messages_failed: latestOutbox.failed_count || 0,
+          duration_ms: latestOutbox.duration_ms || 0
+        };
+      }
+    }
+    
+    // Also check pending outbox messages
+    const pendingOutboxDir = 'out/ops/outbox';
+    if (fs.existsSync(pendingOutboxDir)) {
+      const pendingFiles = fs.readdirSync(pendingOutboxDir).filter(f => f.endsWith('.json'));
+      dashboard.outbox = {
+        ...dashboard.outbox,
+        pending_count: pendingFiles.length
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not read outbox stats:', e.message);
+  }
 
   // Read actual metrics if available
   try {
@@ -146,8 +175,29 @@ async function emitDashboard() {
     console.warn('⚠️  Could not read metrics:', e.message);
   }
 
-  // Check service health (simplified)
-  dashboard.services.temporal.status = await checkServiceHealth('temporal', 7233) ? 'healthy' : 'unhealthy';
+  // Check service health - read from temporal-health.json if available
+  try {
+    const temporalHealthPath = 'out/ops/temporal-health.json';
+    if (fs.existsSync(temporalHealthPath)) {
+      const temporalHealth = JSON.parse(fs.readFileSync(temporalHealthPath, 'utf-8'));
+      dashboard.services.temporal = {
+        status: temporalHealth.up ? 'healthy' : 'unhealthy',
+        health: {
+          up: temporalHealth.up,
+          serverVersion: temporalHealth.serverVersion,
+          namespace: temporalHealth.namespace,
+          address: temporalHealth.address,
+          error: temporalHealth.error
+        }
+      };
+    } else {
+      dashboard.services.temporal.status = await checkServiceHealth('temporal', 7233) ? 'healthy' : 'unhealthy';
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not read temporal health:', e.message);
+    dashboard.services.temporal.status = await checkServiceHealth('temporal', 7233) ? 'healthy' : 'unhealthy';
+  }
+  
   dashboard.services.database.status = 'unknown'; // Would check actual DB connection
   dashboard.services.api.status = await checkServiceHealth('api', 3000) ? 'healthy' : 'unknown';
   dashboard.services.worker.status = 'unknown'; // Would check worker status
@@ -171,27 +221,9 @@ async function emitDashboard() {
     // If cron mode, add nextRun estimates for our known schedules
     if (mode === 'cron') {
       const crons = [
-        // Maintenance workflows
         { id: 'maintenance.normalizer.5m', cron: '*/5 * * * *' },
         { id: 'maintenance.ttl.hourly', cron: '0 * * * *' },
         { id: 'maintenance.archive.daily', cron: '10 3 * * *' },
-        
-        // Data ingestion workflows
-        { id: 'feed.ingestion.1m', cron: '* * * * *' },
-        { id: 'grading.dispatcher.1m', cron: '* * * * *' },
-        
-        // Recap workflows (ET timezone - updated times)
-        { id: 'recap.daily.11am', cron: '0 11 * * *' },
-        { id: 'recap.weekly.mon1500', cron: '0 15 * * 1' },
-        { id: 'recap.monthly.day1.1500', cron: '0 15 1 * *' },
-        { id: 'recap.yearly.jan1.1500', cron: '0 15 1 1 *' },
-        
-        // Streak detection workflows
-        { id: 'streaks.detector.hourly', cron: '0 * * * *' },
-        { id: 'capper.spotlight.daily.1800', cron: '0 18 * * *' },
-        
-        // Futures workflows
-        { id: 'futures.cleanup.daily.0400', cron: '0 4 * * *' },
       ];
       maintenance.nextRun = {};
       for (const c of crons) {
@@ -203,7 +235,9 @@ async function emitDashboard() {
       }
     }
 
+    // Back-compat alias: also expose under maintenance
     dashboard.schedules = maintenance;
+    dashboard.maintenance = { ...dashboard.maintenance, nextRun: maintenance.nextRun, mode: maintenance.mode };
   } catch (e) {
     dashboard.schedules = { mode: 'cron' };
   }
