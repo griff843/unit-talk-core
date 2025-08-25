@@ -1,0 +1,118 @@
+name: Hardening
+
+on:
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build agent inventory
+        run: node scripts/dev/agent-inventory.mjs
+
+      - name: Upload agent inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-inventory
+          path: out/dev/agent-inventory.json
+          if-no-files-found: warn
+
+      - name: Lint (JSON report for summary)
+        run: |
+          mkdir -p out/quality
+          npx eslint . -f json -o out/quality/eslint-report.json
+
+      - name: ESLint summary (markdown)
+        run: node scripts/ci/eslint-summary.cjs
+
+      - name: Lint (must pass with 0 errors)
+        run: npm run lint
+
+      - name: Run contracts (static + runtime)
+        run: npm run contracts:all
+
+      - name: Build contracts package
+        run: npm run -w packages/contracts build
+
+      - name: Contracts tests
+        run: npm run test:contracts
+
+      - name: Generate ops dashboard
+        run: node scripts/ops/emit-dashboard.js
+
+      - name: Snapshot test (dashboard shape)
+        run: node scripts/tests/dashboard.shape.test.mjs
+
+      - name: CI summary (write markdown)
+        run: node scripts/ci/write-last-summary.mjs
+
+      - name: Post PR Ops Dashboard comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx tsx scripts/ci/comment-ops-summary.ts
+
+      - name: Upload CI summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: last-ci-summary
+          path: out/quality/last-ci-summary.md
+          if-no-files-found: warn
+
+      - name: Gitleaks (warn-only)
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        with:
+          config-path: .gitleaks.toml
+          fail: false
+          redact: true
+          verbose: true
+
+
+  maintenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Schedules doctor
+        run: npm run schedules:doctor
+
+      - name: Integration tests (agents + maintenance smoke)
+        run: npm run test:integration
+        continue-on-error: true
+
+      - name: Generate ops dashboard
+        run: node scripts/ops/emit-dashboard.js
+
+      - name: Upload maintenance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-artifacts
+          path: |
+            out/ops/maintenance/*
+            out/ops/dashboard.json
+            out/dev/schedules-doctor.json
+          if-no-files-found: warn

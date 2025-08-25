@@ -1,7 +1,48 @@
 #!/usr/bin/env node
+/* eslint-env node */
+
 
 const fs = require('fs');
 const path = require('path');
+
+// Quiet hours checking function
+function isCurrentlyQuietHours() {
+  try {
+    const start = process.env.QUIET_HOURS_START || '21:00';
+    const end = process.env.QUIET_HOURS_END || '08:00';
+    const timezone = process.env.TZ || 'America/New_York';
+    
+    const currentTime = new Date();
+    const etFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const etTimeString = etFormatter.format(currentTime);
+    const [hours, minutes] = etTimeString.split(':').map(num => parseInt(num, 10));
+    const currentMinutes = hours * 60 + minutes;
+    
+    const startMinutes = parseTimeToMinutes(start);
+    const endMinutes = parseTimeToMinutes(end);
+    
+    // Handle overnight quiet hours (e.g., 21:00 to 08:00)
+    if (startMinutes > endMinutes) {
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    } else {
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    }
+  } catch (error) {
+    console.warn('Failed to check quiet hours:', error.message);
+    return false;
+  }
+}
+
+function parseTimeToMinutes(timeStr) {
+  const [hours, minutes] = timeStr.split(':').map(num => parseInt(num, 10));
+  return hours * 60 + minutes;
+}
 
 // Emit dashboard JSON with current system state
 async function emitDashboard() {
@@ -39,6 +80,14 @@ async function emitDashboard() {
     phase: determinePhase()
   };
 
+  // Standardized 5min view under metrics and top-level
+  dashboard.metrics.last5min = {
+    raw_new_5min: dashboard.metrics.ingestion.raw_new_5min,
+    processed_5min: dashboard.metrics.ingestion.processed_5min,
+    promoted_5min: dashboard.metrics.ingestion.promoted_5min,
+  };
+  dashboard.last5min = { ...dashboard.metrics.last5min };
+
   // Read acceptance results if available
   try {
     if (fs.existsSync('out/ops/acceptance.json')) {
@@ -58,7 +107,7 @@ async function emitDashboard() {
     if (fs.existsSync('out/ops/promoter.json')) {
       const promoter = JSON.parse(fs.readFileSync('out/ops/promoter.json', 'utf-8'));
       dashboard.promoter = promoter;
-      
+
       // Update metrics from promoter
       dashboard.metrics.ingestion.promoted_5min = promoter.promoted_last_5m || 0;
       dashboard.metrics.performance.backlog_size = promoter.backlog_size || 0;
@@ -66,6 +115,14 @@ async function emitDashboard() {
   } catch (e) {
     console.warn('⚠️  Could not read promoter output:', e.message);
   }
+
+  // Add quiet hours status
+  dashboard.quiet_hours = {
+    start: process.env.QUIET_HOURS_START || '21:00',
+    end: process.env.QUIET_HOURS_END || '08:00',
+    timezone: process.env.TZ || 'America/New_York',
+    active: isCurrentlyQuietHours()
+  };
 
   // Read actual metrics if available
   try {
@@ -75,6 +132,15 @@ async function emitDashboard() {
         ...dashboard.metrics.ingestion,
         ...metrics
       };
+      // Keep standardized last5min in sync and strip legacy keys if present
+      dashboard.metrics.last5min = {
+        raw_new_5min: dashboard.metrics.ingestion.raw_new_5min,
+        processed_5min: dashboard.metrics.ingestion.processed_5min,
+        promoted_5min: dashboard.metrics.ingestion.promoted_5min,
+      };
+      dashboard.last5min = { ...dashboard.metrics.last5min };
+      delete dashboard.metrics.last_5min;
+      delete dashboard.metrics.lastFiveMin;
     }
   } catch (e) {
     console.warn('⚠️  Could not read metrics:', e.message);
@@ -89,6 +155,59 @@ async function emitDashboard() {
   // Generate alerts based on conditions
   dashboard.alerts = generateAlerts(dashboard);
 
+  // Maintenance mode detection (doctor file or env)
+  try {
+    const doctorPath = 'out/dev/schedules-doctor.json';
+    let mode = 'cron';
+    if (fs.existsSync(doctorPath)) {
+      const doc = JSON.parse(fs.readFileSync(doctorPath, 'utf8'));
+      mode = doc.mode || mode;
+    } else if (process.env.MAINTENANCE_MODE) {
+      mode = String(process.env.MAINTENANCE_MODE);
+    }
+
+    const maintenance = { mode };
+
+    // If cron mode, add nextRun estimates for our known schedules
+    if (mode === 'cron') {
+      const crons = [
+        // Maintenance workflows
+        { id: 'maintenance.normalizer.5m', cron: '*/5 * * * *' },
+        { id: 'maintenance.ttl.hourly', cron: '0 * * * *' },
+        { id: 'maintenance.archive.daily', cron: '10 3 * * *' },
+        
+        // Data ingestion workflows
+        { id: 'feed.ingestion.1m', cron: '* * * * *' },
+        { id: 'grading.dispatcher.1m', cron: '* * * * *' },
+        
+        // Recap workflows (ET timezone - updated times)
+        { id: 'recap.daily.11am', cron: '0 11 * * *' },
+        { id: 'recap.weekly.mon1500', cron: '0 15 * * 1' },
+        { id: 'recap.monthly.day1.1500', cron: '0 15 1 * *' },
+        { id: 'recap.yearly.jan1.1500', cron: '0 15 1 1 *' },
+        
+        // Streak detection workflows
+        { id: 'streaks.detector.hourly', cron: '0 * * * *' },
+        { id: 'capper.spotlight.daily.1800', cron: '0 18 * * *' },
+        
+        // Futures workflows
+        { id: 'futures.cleanup.daily.0400', cron: '0 4 * * *' },
+      ];
+      maintenance.nextRun = {};
+      for (const c of crons) {
+        try {
+          maintenance.nextRun[c.id] = estimateNextRun(c.cron);
+        } catch (err) {
+          // ignore parse errors
+        }
+      }
+    }
+
+    dashboard.schedules = maintenance;
+  } catch (e) {
+    dashboard.schedules = { mode: 'cron' };
+  }
+
   // Write dashboard
   const outputPath = 'out/ops/dashboard.json';
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -100,7 +219,7 @@ async function emitDashboard() {
   console.log(`  Shadow Mode: ${dashboard.environment.SHADOW_MODE}`);
   console.log(`  Publish to Discord: ${dashboard.environment.PUBLISH_TO_DISCORD}`);
   console.log(`  Services: ${Object.entries(dashboard.services).map(([k, v]) => `${k}=${v.status}`).join(', ')}`);
-  
+
   if (dashboard.metrics.ingestion) {
     console.log(`\n  5-Minute Metrics:`);
     console.log(`    Raw: ${dashboard.metrics.ingestion.raw_new_5min}`);
@@ -182,10 +301,58 @@ function generateAlerts(dashboard) {
   return alerts;
 }
 
+// Estimate next run time for a cron string (minute-level) without deps
+function estimateNextRun(cron) {
+  // Supports patterns like "*/5 * * * *", "0 * * * *", "10 3 * * *"
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [minSpec, hourSpec] = parts;
+  const base = new Date();
+  base.setSeconds(0, 0);
+
+  function nextMinuteFromSpec(spec, base) {
+    if (spec.startsWith('*/')) {
+      const step = parseInt(spec.slice(2), 10) || 1;
+      const m = base.getMinutes();
+      const delta = (step - (m % step)) % step;
+      const cand = new Date(base.getTime());
+      cand.setMinutes(m + delta);
+      if (delta === 0 && cand <= base) cand.setMinutes(cand.getMinutes() + step);
+      return cand;
+    }
+    const val = parseInt(spec, 10);
+    if (!isNaN(val)) {
+      const cand = new Date(base.getTime());
+      cand.setMinutes(val);
+      if (cand <= base) cand.setHours(cand.getHours() + 1);
+      return cand;
+    }
+    return null;
+  }
+
+  function nextHourFromSpec(spec, base) {
+    if (spec === '*') return base;
+    const val = parseInt(spec, 10);
+    if (!isNaN(val)) {
+      const cand = new Date(base.getTime());
+      cand.setHours(val, cand.getMinutes(), 0, 0);
+      if (cand <= base) cand.setDate(cand.getDate() + 1);
+      return cand;
+    }
+    return base;
+  }
+
+  // compute next time honoring hour then minute
+  const hourFirst = nextHourFromSpec(hourSpec, base);
+  const minuteNext = nextMinuteFromSpec(minSpec, hourFirst);
+  const result = minuteNext || hourFirst;
+  return result ? result.toISOString() : null;
+}
+
 // Simple service health check
 async function checkServiceHealth(service, port) {
   const net = require('net');
-  
+
   return new Promise((resolve) => {
     const client = new net.Socket();
     const timeout = setTimeout(() => {
