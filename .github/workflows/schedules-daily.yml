@@ -43,7 +43,7 @@ jobs:
           MODE=$(npm run -s schedules:doctor | grep MODE | sed 's/.*MODE=\(.*\)/\1/')
           echo "mode=$MODE" >> $GITHUB_OUTPUT
 
-      - name: Notifier: PR or Issue
+      - name: Notifier - PR or Issue
         uses: actions/github-script@v7
         with:
           script: |
