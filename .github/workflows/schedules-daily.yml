@@ -1,4 +1,4 @@
-name: Schedules Daily Check
+name: Temporal Daily Reporting
 
 on:
   schedule:
@@ -12,10 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  actions: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 jobs:
   daily-schedules:
@@ -33,66 +30,33 @@ jobs:
       - name: Install deps
         run: npm ci --include=dev --no-audit --no-fund
 
-      - name: Temporal health
-        run: node scripts/ops/temporal-health.ts || true
-
-      - name: Run schedules:doctor
-        id: doctor
-        run: |
-          set -e
-          MODE=$(npm run -s schedules:doctor | grep MODE | sed 's/.*MODE=\(.*\)/\1/')
-          echo "mode=$MODE" >> $GITHUB_OUTPUT
-
-      - name: Notifier - PR or Issue
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const mode = '${{ steps.doctor.outputs.mode }}' || 'cron';
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const today = new Date().toISOString().slice(0,10);
-
-            // Repo variable helpers
-            async function getVar(name) {
-              try { const r = await github.rest.actions.getRepoVariable({ owner, repo, name }); return r.data.value; } catch { return null; }
-            }
-            async function setVar(name, value) {
-              try { await github.rest.actions.updateRepoVariable({ owner, repo, name, value }); } catch { await github.rest.actions.createRepoVariable({ owner, repo, name, value }); }
-            }
-
-            const prev = (await getVar('SCHEDULES_LAST_MODE')) || 'cron';
-            if (prev !== mode && prev === 'cron' && mode === 'schedules') {
-              // Prefer commenting on open PRs targeting main
-              const { data: prs } = await github.rest.pulls.list({ owner, repo, state: 'open', base: 'main' });
-              if (prs && prs.length > 0) {
-                const pr = prs[0];
-                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: `MODE changed: cron → schedules (${today})` });
-              } else {
-                // Create or update a single tracking issue
-                const title = 'Temporal Schedules Mode Changes';
-                const { data: issues } = await github.rest.search.issuesAndPullRequests({ q: `repo:${owner}/${repo} is:issue in:title "${title}"` });
-                let issueNumber = null;
-                if (issues.items && issues.items.length > 0) {
-                  issueNumber = issues.items[0].number;
-                  await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: `MODE changed: cron → schedules (${today})` });
-                } else {
-                  const { data: created } = await github.rest.issues.create({ owner, repo, title, body: `Tracking Temporal Schedules MODE changes.\n\n- ${today}: cron → schedules` });
-                  issueNumber = created.number;
-                }
-              }
-            }
-            await setVar('SCHEDULES_LAST_MODE', mode);
-
-      - name: Generate ops dashboard
+      - name: Probe Temporal (soft)
+        run: npm run ops:probe:temporal:soft
+      - name: List schedules (non-blocking)
+        run: npm run schedules:list || true
+      - name: Emit dashboard
         run: node scripts/ops/emit-dashboard.js
-
-      - name: Upload artifacts
+      - name: Upload ops artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: schedules-daily
+          name: temporal-daily-ops
           path: |
-            out/ops/dashboard.json
-            out/dev/schedules-doctor.json
-            out/ops/temporal-health.json
+            out/ops/*.json
           if-no-files-found: warn
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## Temporal Daily Report" >> $GITHUB_STEP_SUMMARY
+          echo "Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          FILE=out/ops/temporal-health.json
+          if [ -f "$FILE" ]; then
+            UP=$(node -e "console.log(require('./$FILE').up ? 'true' : 'false')")
+            ADDR=$(node -e "console.log(require('./$FILE').address || '')")
+            VER=$(node -e "console.log((require('./$FILE').serverVersion)||'unknown')")
+            echo "- Up: $UP" >> $GITHUB_STEP_SUMMARY
+            echo "- Address: $ADDR" >> $GITHUB_STEP_SUMMARY
+            echo "- Version: $VER" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- No temporal-health.json produced" >> $GITHUB_STEP_SUMMARY
+          fi
 

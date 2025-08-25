@@ -1,5 +1,7 @@
 name: CI/CD Pipeline
 
+name: CI/CD Pipeline
+
 on:
   push:
     branches: [main, develop, 'feat/*', 'feature/*', 'fix/*', 'hotfix/*']
@@ -896,6 +898,49 @@ jobs:
           fi
 
 
+
+  # Gating job: boot Temporal and verify connectivity
+  gating-temporal:
+    name: Gating - Temporal Connectivity
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install deps
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Boot Temporal via Docker Compose
+        run: |
+          docker compose up -d temporal-postgres temporal temporal-ui
+      - name: Wait for 7233
+        run: |
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/127.0.0.1/7233) >/dev/null 2>&1 && echo "Temporal port open" && exit 0
+            sleep 2
+          done
+          echo "Temporal port not open" >&2
+          exit 1
+      - name: Probe Temporal (hard)
+        env:
+          TEMPORAL_ADDRESS: 127.0.0.1:7233
+        run: npm run ops:probe:temporal
+      - name: List schedules (hard)
+        env:
+          TEMPORAL_ADDRESS: 127.0.0.1:7233
+        run: npm run schedules:list
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-gating
+          path: |
+            out/ops/*.json
+          if-no-files-found: warn
+
   # Job: Contracts (static + runtime)
   contracts:
     name: Adapter Contracts
@@ -962,3 +1007,43 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx tsx scripts/ci/comment-ops-summary.ts
+
+
+  # Job: Maintenance (doctor + integration + dashboard + artifacts)
+  pr-maintenance:
+    name: PR Maintenance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install deps
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Temporal health
+        run: node scripts/ops/temporal-health.ts || true
+      - name: Schedules doctor
+        run: npm run schedules:doctor || true
+      - name: Integration tests (agents + maintenance smoke)
+        run: npm run test:integration
+        continue-on-error: true
+      - name: Run health checks
+        run: npm run ops:health
+        continue-on-error: true
+      - name: Generate ops dashboard
+        run: node scripts/ops/emit-dashboard.js
+      - name: Upload maintenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-artifacts
+          path: |
+            out/ops/maintenance/*
+            out/ops/dashboard.json
+            out/dev/schedules-doctor.json
+            out/ops/temporal-health.json
+            out/ops/health-*.json
+          if-no-files-found: warn

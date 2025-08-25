@@ -198,9 +198,53 @@ async function emitDashboard() {
     dashboard.services.temporal.status = await checkServiceHealth('temporal', 7233) ? 'healthy' : 'unhealthy';
   }
   
-  dashboard.services.database.status = 'unknown'; // Would check actual DB connection
-  dashboard.services.api.status = await checkServiceHealth('api', 3000) ? 'healthy' : 'unknown';
-  dashboard.services.worker.status = 'unknown'; // Would check worker status
+  // Read health check files if available
+  try {
+    if (fs.existsSync('out/ops/health-db.json')) {
+      const healthDb = JSON.parse(fs.readFileSync('out/ops/health-db.json', 'utf-8'));
+      dashboard.services.database = {
+        status: healthDb.up ? 'healthy' : 'unhealthy',
+        health: healthDb
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not read database health:', e.message);
+  }
+
+  try {
+    if (fs.existsSync('out/ops/health-api.json')) {
+      const healthApi = JSON.parse(fs.readFileSync('out/ops/health-api.json', 'utf-8'));
+      dashboard.services.api = {
+        status: healthApi.up ? 'healthy' : 'unhealthy',
+        health: healthApi
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not read API health:', e.message);
+  }
+
+  try {
+    if (fs.existsSync('out/ops/health-worker.json')) {
+      const healthWorker = JSON.parse(fs.readFileSync('out/ops/health-worker.json', 'utf-8'));
+      dashboard.services.worker = {
+        status: healthWorker.up ? 'healthy' : 'unhealthy',
+        health: healthWorker
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️  Could not read worker health:', e.message);
+  }
+
+  // Fallback checks for missing health files
+  if (!dashboard.services.database.health) {
+    dashboard.services.database.status = 'unknown';
+  }
+  if (!dashboard.services.api.health) {
+    dashboard.services.api.status = await checkServiceHealth('api', 3000) ? 'healthy' : 'unknown';
+  }
+  if (!dashboard.services.worker.health) {
+    dashboard.services.worker.status = 'unknown';
+  }
 
   // Generate alerts based on conditions
   dashboard.alerts = generateAlerts(dashboard);

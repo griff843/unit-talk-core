@@ -61,7 +61,29 @@ function Phase-Cmd($Phase) {
 switch ($Action) {
   'up' {
     Write-Host "Bringing up Temporal stack..."
-    & $DC[0] $DC[1] up -d temporal-postgres temporal temporal-ui | Out-Null
+    
+    # Check if 127.0.0.1:7233 is listening, if not start temporal services
+    $temporalListening = $false
+    try {
+      $client = New-Object System.Net.Sockets.TcpClient
+      $iar = $client.BeginConnect('127.0.0.1', [int]$env:TEMPORAL_PORT, $null, $null)
+      $ok = $iar.AsyncWaitHandle.WaitOne(500)
+      if ($ok -and $client.Connected) { 
+        $temporalListening = $true
+        $client.Close()
+        Write-Host "Temporal already running on 127.0.0.1:$env:TEMPORAL_PORT"
+      } else {
+        $client.Close()
+      }
+    } catch { }
+    
+    if (-not $temporalListening) {
+      Write-Host "Starting Temporal services..."
+      & $DC[0] $DC[1] up -d temporal-postgres temporal temporal-ui | Out-Null
+    } else {
+      Write-Host "Ensuring Temporal services are up..."
+      & $DC[0] $DC[1] up -d temporal-postgres temporal temporal-ui | Out-Null
+    }
 
     Wait-Tcp '127.0.0.1' $env:TEMPORAL_PORT ("Temporal gRPC :" + $env:TEMPORAL_PORT)
     Wait-Http ("http://127.0.0.1:" + $env:TEMPORAL_UI_PORT) ("Temporal UI :" + $env:TEMPORAL_UI_PORT)
@@ -70,8 +92,45 @@ switch ($Action) {
       Write-Host "Starting worker via Docker..."
       & $DC[0] $DC[1] up -d worker | Out-Null
     } else {
-      Write-Host "Starting worker locally (fallback)..."
-      Start-Process -NoNewWindow -FilePath "npm" -ArgumentList @("run","-w","apps/worker","worker:dev") | Out-Null
+      Write-Host "Starting worker locally via npm shim..."
+      # Launch worker via the actual npm shim to ensure proper environment
+      try {
+        # First try npm directly
+        $npm = Get-Command npm -ErrorAction SilentlyContinue
+        if ($npm) {
+          $npmPath = if ($npm.Source) { $npm.Source } else { "npm" }
+        } else {
+          # Try npm.cmd on Windows
+          $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+          if ($npmCmd) {
+            $npmPath = $npmCmd.Source
+          } else {
+            throw "npm not found"
+          }
+        }
+        
+        Write-Host "Using npm at: $npmPath"
+        Start-Process -NoNewWindow -FilePath $npmPath `
+          -ArgumentList @("run", "-w", "apps/worker", "start") `
+          -WorkingDirectory $PSScriptRoot
+        Write-Host "Worker started via npm run -w apps/worker start."
+      } catch {
+        Write-Host "Falling back to npx tsx..."
+        try {
+          $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
+          Start-Process -NoNewWindow -FilePath $npx `
+            -ArgumentList @("tsx","apps/worker/src/worker.ts") `
+            -WorkingDirectory $PSScriptRoot
+          Write-Host "Worker started via npx tsx."
+        } catch {
+          Write-Host "Falling back to Node dist..."
+          $node = (Get-Command node.exe -ErrorAction Stop).Source
+          Start-Process -NoNewWindow -FilePath $node `
+            -ArgumentList @("apps\worker\dist\worker.js") `
+            -WorkingDirectory $PSScriptRoot
+          Write-Host "Worker started via node dist."
+        }
+      }
     }
 
     Write-Host ""
