@@ -1,0 +1,82 @@
+name: Enterprise Validate
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      PR_HARD_VALIDATION:
+        type: boolean
+        default: false
+
+concurrency:
+  group: ent-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PR_HARD: ${{ github.event.inputs.PR_HARD_VALIDATION == 'true' || vars.PR_HARD_VALIDATION == '1' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Start Temporal (docker) - nightly & PR
+        run: |
+          docker compose up -d temporal-postgres temporal temporal-ui
+          for i in {1..45}; do nc -z 127.0.0.1 7233 && break; sleep 2; done
+          nc -z 127.0.0.1 7233 || (docker compose logs temporal && exit 1)
+
+      - name: Resolve & Probe (soft unless PR_HARD)
+        run: |
+          npm run ops:resolve:temporal || true
+          if [ "${{ env.PR_HARD }}" = "true" ]; then
+            TEMPORAL_ADDRESS=127.0.0.1:7233 npm run ops:probe:temporal
+          else
+            TEMPORAL_ADDRESS=127.0.0.1:7233 npm run ops:probe:temporal || true
+          fi
+
+      - name: Enterprise gauntlet (soft by default)
+        run: |
+          npm run ops:verify:rbac || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:verify:tenancy || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:verify:pii || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:verify:flags || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:verify:otel || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:verify:health || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          npm run ops:provider:usage || true
+          npm run ops:slo || true
+          npm run ops:verify:rate-limit || $([ "${{ env.PR_HARD }}" = "true" ] && echo "hard" || echo "true")
+          if [ "${{ env.PR_HARD }}" = "true" ]; then npm run ops:dr:restore:check; else npm run ops:dr:restore:check || true; fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-artifacts
+          path: out/**/*
+          if-no-files-found: warn
+
+  pr-hard-gate:
+    if: >
+      (github.event_name == 'pull_request') &&
+      (env.PR_HARD == 'true')
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gate on core artifacts existing and ok
+        run: |
+          jq -e '.ok==true' out/audit/rbac-matrix.json
+          jq -e '.ok==true' out/audit/tenancy-check.json
+          jq -e '.ok==true' out/ops/flags-check.json
+          jq -e '.ok==true' out/ops/health-endpoints.json

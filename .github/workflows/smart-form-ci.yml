@@ -1,0 +1,22 @@
+name: Smart Form CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/smart-form/**'
+  push:
+    paths:
+      - 'apps/smart-form/**'
+
+jobs:
+  smart-form:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build Smart Form
+        run: npm --workspace @unit-talk/smart-form run build
