@@ -1,0 +1,41 @@
+name: Nightly Ops (Soft)
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # 06:00 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Soft probe & dashboard (never fail)
+        env:
+          CI_SOFT: '1'
+        run: |
+          npm run ops:probe:temporal:soft || true
+          npm run dash:emit || true
+          npm run ops:status:quick || true
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-artifacts
+          path: |
+            out/ops/status.json
+            out/ops/temporal-health.json
+            out/ops/dashboard.json
+          if-no-files-found: warn
